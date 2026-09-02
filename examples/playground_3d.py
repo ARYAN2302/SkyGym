@@ -92,14 +92,23 @@ class H(http.server.SimpleHTTPRequestHandler):
                     a=np.asarray(act,dtype=np.float32)
                     act=a if a.shape==(3,) else None
                 except: act=None
+            # optional catch-up: client may ask for >1 env steps per request
+            # when the tab was throttled/backgrounded (drift correction)
+            try: n_steps=int(data.get("steps",1))
+            except: n_steps=1
+            n_steps=int(np.clip(n_steps,1,8))
             with _lock:
-                env=_get_env(_env_mode or "control")
-                obs,_,te,tr,info=env.step(act)
-                obs_s=_obs_ser(obs)
-                gt=_san({"t":float(info["gt"]["t"]),"pos":info["gt"]["pos"].tolist(),"vel":info["gt"]["vel"].tolist(),"az_deg":float(info["gt"]["az_deg"]),"el_deg":float(info["gt"]["el_deg"]),"range_m":float(info["gt"]["range_m"]),"true_class":info["gt"]["true_class"],"tx_on":bool(info["gt"]["tx_on"]),"scenario":info["gt"]["scenario"],"episode_id":info["gt"]["episode_id"]})
-                _rec.append({"t":gt["t"],"obs":obs_s,"gt":gt})
-                if len(_rec)>12000: _rec=_rec[-12000:]
-                resp={"obs":obs_s,"gt":gt,"terminated":bool(te),"truncated":bool(tr),"duration_s":_cur_dur,"mode":_env_mode,"recording_len":len(_rec)}
+                env = _get_env(_env_mode or "control")
+                obs_s, gt, te, tr, frames = None, None, False, False, []
+                for _i in range(n_steps):
+                    obs, _, te, tr, info = env.step(act)
+                    obs_s=_obs_ser(obs)
+                    gt=_san({"t":float(info["gt"]["t"]),"pos":info["gt"]["pos"].tolist(),"vel":info["gt"]["vel"].tolist(),"az_deg":float(info["gt"]["az_deg"]),"el_deg":float(info["gt"]["el_deg"]),"range_m":float(info["gt"]["range_m"]),"true_class":info["gt"]["true_class"],"tx_on":bool(info["gt"]["tx_on"]),"scenario":info["gt"]["scenario"],"episode_id":info["gt"]["episode_id"]})
+                    _rec.append({"t":gt["t"],"obs":obs_s,"gt":gt})
+                    frames.append({"t":gt["t"],"pos":gt["pos"]})
+                    if len(_rec)>12000: _rec=_rec[-12000:]
+                    if te or tr: break
+                resp={"obs":obs_s,"gt":gt,"terminated":bool(te),"truncated":bool(tr),"duration_s":_cur_dur,"mode":_env_mode,"recording_len":len(_rec),"steps_done":len(frames),"frames":frames}
             self._j(resp); return
         if p=="/api/export":
             fmt=data.get("format","jsonl")

@@ -279,8 +279,12 @@ document.getElementById('expJ').onclick=()=> doExp('jsonl');
 document.getElementById('expC').onclick=()=> doExp('csv');
 
 // tick 10Hz — drives entire path, not just t=0
-async function tick(){
-  if(!launched || paused || !state) return;
+// reentrancy guard: never two /api/step fetches in parallel (they would
+// interleave out of order and make the drone jump)
+let inFlight=false;
+async function tick(nSteps=1){
+  if(!launched || paused || !state || inFlight) return;
+  inFlight=true;
   let action=null;
   const isAuto = mode!=='manual';
   if(isAuto){
@@ -294,14 +298,23 @@ async function tick(){
     else { const v=state.gt.vel; const n=Math.hypot(v[0],v[1],v[2]); action= n>0.25? [-v[0]*1.15, -v[1]*1.15, -v[2]*1.15] : [0,0,0]; }
   }
   try{
-    const res=await api('/api/step',{action}); state=res; apply(res);
+    const res=await api('/api/step',{action, steps:nSteps}); state=res;
+    // batch catch-up frames (all but the last, which apply() pushes)
+    if(res.frames) for(const fr of res.frames.slice(0,-1)){ const p=to3(fr.pos); trail.push(p.x,p.y,p.z); if(trail.length>maxTrail*3) trail.splice(0,3); }
+    apply(res);
     if(res.terminated||res.truncated){
       launched=false; // STOP — do not auto-restart, user must click Launch for next run
       showMsg(mode==='manual'?'Manual ended — Export JSONL/CSV':`Auto ${dur}s complete — full path ${trail.length/3} pts — click Launch for next`, 3800);
     }
   }catch(e){ console.error(e); document.getElementById('live').textContent='● error'; document.getElementById('live').style.color='#fecaca'; }
+  finally{ inFlight=false; }
 }
-setInterval(tick, 100);
+// drift-corrected scheduler: setInterval throttles in background tabs, and
+// fetch latency ≠ 100 ms — accumulate real time and ask the server for the
+// number of steps we owe it (up to 6), so sim time stays wall-clock-true
+let acc=0, lastTick=performance.now();
+setInterval(()=>{ const now=performance.now(); acc+=now-lastTick; lastTick=now;
+  if(acc>=100){ acc=Math.min(acc,600); const due=Math.min(6,Math.floor(acc/100)); acc-=due*100; tick(due); } },25);
 
 let last=performance.now(),frames=0;
 function anim(){
