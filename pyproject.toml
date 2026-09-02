@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "skygym"
-version = "0.1.1"
-description = "SkyGym - a Gymnasium playground where a drone flies and recon sensors corrupt the truth: synthetic az/el/range/threat-ID detection streams with hidden ground truth."
+version = "0.2.0"
+description = "SkyGym - a Gymnasium playground where a drone flies and recon sensors corrupt the truth: synthetic az/el/range/threat-ID detection streams with hidden ground truth, and a Stone Soup tracking baseline."
 readme = "README.md"
 requires-python = ">=3.9"
 license = { text = "MIT" }
@@ -23,9 +23,10 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+tracking = ["stonesoup>=1.0"]
 data = ["pandas>=2.0", "pyarrow>=14.0"]
 plot = ["matplotlib>=3.7"]
-dev = ["pytest>=7.0", "pandas>=2.0", "matplotlib>=3.7"]
+dev = ["pytest>=7.0", "pandas>=2.0", "matplotlib>=3.7", "stonesoup>=1.0"]
 
 [tool.setuptools.packages.find]
 include = ["skygym*"]

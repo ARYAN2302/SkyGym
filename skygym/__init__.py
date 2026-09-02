@@ -9,7 +9,7 @@ from .env import SkyGymEnv
 from .sensors import Detection, RadarSensor, EOSensor, RFSensor
 from . import world
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
 
 __all__ = [
     "SkyGymEnv", "EnvCfg", "FlightCfg", "RadarCfg", "EOCfg", "RFCfg",
