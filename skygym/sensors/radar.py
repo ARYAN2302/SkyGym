@@ -46,14 +46,31 @@ class RadarSensor(Sensor):
             * self.noise_scale
 
     # ------------------------------------------------------------------
+    def poll(self, t_now: float, drone_pos: np.ndarray, drone_meta: dict) -> list[Detection]:
+        """Fire at the radar's own rate.
+
+        Bug fix: clutter is a Poisson process PER SCAN (birds/ground/multipath
+        enter the beam whether or not the target is detected or even in
+        range). The previous version only drew clutter when the target was
+        beyond max_range, which produced clutter-free scenes for the entire
+        in-range envelope.
+        """
+        t_prev_next = self._next_t
+        dets = super().poll(t_now, drone_pos, drone_meta)
+        # clutter is drawn once per consumed scan so the Poisson rate stays
+        # per-scan regardless of how many scans fired since the last poll.
+        n_scans = max(0, int(round((self._next_t - t_prev_next) * self.cfg.rate_hz)))
+        for k in range(n_scans):
+            dets.extend(self._clutter(t_prev_next + k / self.cfg.rate_hz))
+        return dets
+
     def _observe(self, t_meas: float, drone_pos: np.ndarray, meta: dict) -> Detection | None:
         c = self.cfg
         site = np.asarray(meta["site_enu"], dtype=float)
         rel = drone_pos - site
         az, el, rng_m = cartesian_to_spherical(rel)
         if rng_m > c.max_range_m:
-            dets = self._clutter(t_meas)
-            return dets[0] if dets else None
+            return None  # no target det; clutter handled per-scan in poll()
 
         rcs = RCS_M2.get(meta.get("true_class", "quad"), 0.05)
         snr = self.snr_db(rng_m, rcs)
