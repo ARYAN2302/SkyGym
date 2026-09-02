@@ -67,6 +67,11 @@ python examples/evaluate_tracker.py --episodes 8
 # 4) fly it yourself (terminal with TTY)
 python examples/interactive.py --scenario approach
 python examples/interactive.py --autopilot --scenario orbit
+
+# 5) 3D interactive Gymnasium playground — DJI drone (same logic, proper 3D)
+python examples/playground_3d.py                              # http://localhost:8000/examples/playground_3d.html
+python examples/playground_3d.py --scenario serpentine --port 8001
+# Controls: WASD/QE/Space + joystick + mouse orbit; autopilot toggle in UI
 ```
 
 ## What's inside
@@ -89,6 +94,11 @@ skygym/
   tracker.py    EKF track-while-scan, GNN gating, az-only updates, M-of-N initiation
   metrics.py    RMSE / initiation latency / continuity / ID accuracy vs witness
   scenarios.py  scenario sampling, grid×random dataset builder, seed-range splits
+examples/
+  playground_3d.html  Three.js r160 3D scene + procedural DJI Mavic (body/arms/motors/props/LEDs)
+  playground_3d.py    HTTP server bridging JS input -> SkyGymEnv step (same flight.py/sensors)
+                      Gymnasium logic unchanged; JS only renders & sends accel [ax,ay,az]
+```
 ```
 
 ## Data hygiene rules (enforced in code, not docs)
