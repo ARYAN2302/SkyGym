@@ -131,7 +131,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                 _episode_id = info["gt"]["episode_id"]
                 _recording = []
                 # record t=0
-                _recording.append({"t": float(info["gt"]["t"]), "obs": _obs_to_ser(obs), "gt": _sanitize({"pos": info["gt"]["pos"].tolist(), "vel": info["gt"]["vel"].tolist(), "az_deg": float(info["gt"]["az_deg"]), "el_deg": float(info["gt"]["el_deg"]), "range_m": float(info["gt"]["range_m"]), "true_class": info["gt"]["true_class"], "tx_on": bool(info["gt"]["tx_on"]), "scenario": info["gt"]["scenario"], "episode_id": _episode_id})})
+                _recording.append({"t": float(info["gt"]["t"]), "obs": _obs_to_ser(obs), "gt": _sanitize({"t": float(info["gt"]["t"]), "pos": info["gt"]["pos"].tolist(), "vel": info["gt"]["vel"].tolist(), "az_deg": float(info["gt"]["az_deg"]), "el_deg": float(info["gt"]["el_deg"]), "range_m": float(info["gt"]["range_m"]), "true_class": info["gt"]["true_class"], "tx_on": bool(info["gt"]["tx_on"]), "scenario": info["gt"]["scenario"], "episode_id": _episode_id})})
                 resp = {
                     "obs": _obs_to_ser(obs),
                     "gt": _sanitize({"t": float(info["gt"]["t"]), "pos": info["gt"]["pos"].tolist(), "vel": info["gt"]["vel"].tolist(), "az_deg": float(info["gt"]["az_deg"]), "el_deg": float(info["gt"]["el_deg"]), "range_m": float(info["gt"]["range_m"]), "true_class": info["gt"]["true_class"], "tx_on": bool(info["gt"]["tx_on"]), "scenario": info["gt"]["scenario"], "episode_id": _episode_id, "duration_s": duration, "mode": mode}),
@@ -190,7 +190,8 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                 for r in rec:
                     gt = r["gt"]
                     obs = r["obs"]
-                    w.writerow([gt["t"], gt["pos"][0], gt["pos"][1], gt["pos"][2], gt["vel"][0], gt["vel"][1], gt["vel"][2], gt["range_m"], gt["az_deg"], gt["el_deg"], gt["true_class"], gt["tx_on"], obs["radar"]["n"], obs["eo"]["n"], obs["rf"]["n"], gt["episode_id"], gt["scenario"], dur])
+                    t = r.get("t", gt.get("t", 0))
+                    w.writerow([t, gt["pos"][0], gt["pos"][1], gt["pos"][2], gt["vel"][0], gt["vel"][1], gt["vel"][2], gt["range_m"], gt["az_deg"], gt["el_deg"], gt["true_class"], gt["tx_on"], obs["radar"]["n"], obs["eo"]["n"], obs["rf"]["n"], gt["episode_id"], gt["scenario"], dur])
                 body_str = out.getvalue()
                 self.send_response(200)
                 self.send_header("Content-Type", "text/csv")
