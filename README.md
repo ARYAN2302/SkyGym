@@ -122,6 +122,43 @@ examples/
    vectorised backend behind the same Gymnasium API; BlenderProc render
    branch for image-based ID when needed.
 
+## Stone Soup integration (external consumer validated)
+
+`examples/run_stonesoup.py` bridges SkyGym detections into
+[Stone Soup](https://github.com/dstl/Stone-Soup) (Dstl's open-source tracking
+library): per-detection measurement models (`CartesianToElevationBearingRange`
+for radar, `CartesianToElevationBearing` for EO, `Cartesian2DToBearing` for RF),
+EKF + GNN2D association, bearing-only sensors never initiate (they update).
+Convention compatibility (SkyGym compass az vs Stone Soup bearing) is verified
+numerically at every run start.
+
+```bash
+pip install -e . stonesoup
+python examples/run_stonesoup.py --sensors radar  --start-km 1.2
+python examples/run_stonesoup.py --sensors fusion --start-km 1.2
+python examples/run_stonesoup.py --sensors fusion --start-km 4.0 --noise 2.0 --clutter 2.5
+```
+
+20 s approach episodes, seed 20260902, results in `results/stonesoup/`:
+
+| Scenario | Mode | Tracked | Pos RMSE | Steady-state err | Az err |
+|---|---|---|---|---|---|
+| 1.2 km, n1, c1 | radar only | 99.0 % | 32.8 m | 20.2 m | 0.248° |
+| 1.2 km, n1, c1 | **fusion** | **99.5 %** | **22.1 m** | **3.8 m** | **0.081°** |
+| 4 km, n2, c2.5 | radar only | 11.9 % | 2197 m | (track fragments < 2 s) | — |
+| 4 km, n2, c2.5 | **fusion** | **34.8 %** | **1157 m** | (RF keeps a bearing) | 2.74° |
+
+Reading: at 1.2 km fusion cuts steady-state error 5x (EO's 0.08° bearing pulls
+the track). At 4 km radar Pd collapses (~0.05-0.15) and radar-only tracking
+dies; RF bearings roughly triple the tracked fraction — but range stays
+unobservable without radar fixes, exactly the gap a learned fusion policy or a
+multi-hypothesis tracker should close next.
+
+Note: v0.1.1 fixes a radar bug where Poisson clutter was only drawn when the
+target was beyond max_range (in-range scenes were clutter-free). Clutter is
+now drawn every scan as documented; dataset seeds regenerate with clutter
+present.
+
 ## Status
 
 S1–S4 complete (env + sensors + wrappers + tracker + dataset builder +

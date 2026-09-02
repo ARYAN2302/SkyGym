@@ -1,0 +1,26 @@
+{
+  "mode": "fusion",
+  "scenario": "approach",
+  "seed": 20260902,
+  "duration_s": 20.0,
+  "start_km": 1.2,
+  "noise_scale": 1.0,
+  "clutter_scale": 1.0,
+  "dets_fed": {
+    "radar": 366,
+    "eo": 53,
+    "rf": 100
+  },
+  "first_track_at_s": -0.06,
+  "n_track_candidates": 145,
+  "n_confirmed_tracks": 8,
+  "n_false_confirmed_tracks": 7,
+  "max_track_updates": 351,
+  "pct_of_episode_tracked": 99.5,
+  "position_rmse_m": 22.1,
+  "mean_abs_az_err_deg": 0.081,
+  "mean_abs_el_err_deg": 0.213,
+  "mean_abs_range_err_m": 2.99,
+  "steady_state_mean_err_m": 3.84,
+  "steady_state_max_err_m": 21.76
+}
