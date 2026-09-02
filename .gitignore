@@ -1,0 +1,10 @@
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+output/
+dist/
+build/
+.pytest_cache/
+*.parquet
+.DS_Store

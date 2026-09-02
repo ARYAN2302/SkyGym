@@ -1,0 +1,52 @@
+"""Run the baseline EKF consumer over many episodes; print aggregated metrics.
+
+Usage:
+    python examples/evaluate_tracker.py --episodes 12 --scenario approach
+"""
+import argparse
+import json
+import os
+import sys
+
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+
+from skygym.config import EnvCfg
+from skygym.env import SkyGymEnv
+from skygym.metrics import run_tracker_on_episode, aggregate
+
+
+def main() -> None:
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--episodes", type=int, default=12)
+    ap.add_argument("--scenario", default=None,
+                    help="hover|approach|orbit|waypoint_cruise|serpentine|egress")
+    ap.add_argument("--duration", type=float, default=60.0)
+    ap.add_argument("--seed-offset", type=int, default=9_000_000,  # test split
+                    help="default seeds from the TEST split range")
+    args = ap.parse_args()
+
+    env = SkyGymEnv(EnvCfg())
+    results = []
+    for i in range(args.episodes):
+        seed = args.seed_offset + i
+        res = run_tracker_on_episode(
+            env, seed=seed,
+            options={"scenario": args.scenario, "duration_s": args.duration})
+        res["seed"] = seed
+        results.append(res)
+        sc_name = args.scenario if args.scenario else "random"
+        rmse = res.get("pos_rmse_m")
+        vel = res.get("vel_rmse_mps")
+        ida = res.get("id_accuracy")
+        print(f"ep{i:03d} seed={seed} scenario={sc_name:>15} "
+              f"init={'Y' if res['track_initiated'] else 'N'} "
+              f"rmse={rmse if rmse is not None else float('nan'):7.1f}m "
+              f"vel={vel if vel is not None else float('nan'):5.1f}m/s "
+              f"id={ida if ida is not None else float('nan'):.2f}")
+    agg = aggregate(results)
+    print("\n== aggregate ==")
+    print(json.dumps(agg, indent=2, default=str))
+
+
+if __name__ == "__main__":
+    main()
