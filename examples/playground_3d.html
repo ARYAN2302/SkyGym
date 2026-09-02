@@ -67,7 +67,7 @@
   <div id="obs" class="mono">Press Launch — drone will appear (big DJI + beam)</div>
   <h3>Trail & visibility</h3>
   <div class="help">Drone is <b>96× ultra-big</b> (real 0.5m physics → 40m visual) + halo 18m + beam 180m. <b>Thick cyan tube</b> = <b>entire flight path</b> (all t, not just t=0) — grows each 0.1s from Python core. Stops after one run (no auto-loop) — click <b>Launch</b> for next. If you don't see it, click <b>Recenter</b>.</div>
-  <div class="row"><button id="follow" class="on">Follow: ON</button><button id="recenter">Recenter</button><button id="clear">Clear trail</button></div>
+  <div class="row"><button id="follow">Follow: OFF</button><button id="recenter">Recenter</button><button id="clear">Clear trail</button></div>
   <div class="help"><b>Manual:</b> Click canvas first (focus), then hold <b>W</b> north · <b>S</b> south · <b>A/D</b> west/east · <b>Q/E</b> down/up · <b>Space</b> hover. Joystick + mouse orbit also.</div>
 </div>
 <div id="joy"><div id="stick"></div></div>
@@ -134,10 +134,6 @@ function makeDJI(){
   // landing gear
   const legA=new THREE.Mesh(new THREE.BoxGeometry(0.02,0.12,0.02), new THREE.MeshStandardMaterial({color:0x334155})); legA.position.set(0.12,-0.08,0.06); g.add(legA);
   const legB=legA.clone(); legB.position.set(-0.12,-0.08,0.06); g.add(legB);
-  // label sprite
-  const canv=document.createElement('canvas'); canv.width=420; canv.height=84; const ctx=canv.getContext('2d');
-  ctx.fillStyle='rgba(14,165,233,0.92)'; ctx.fillRect(0,0,420,84); ctx.fillStyle='#001018'; ctx.font='700 28px system-ui'; ctx.fillText('DJI MAVIC 3', 18, 36); ctx.font='600 18px system-ui'; ctx.fillText('96× ULTRA-BIG  •  0.5m PHYSICS', 18, 62);
-  const tex=new THREE.CanvasTexture(canv); const spriteMat=new THREE.SpriteMaterial({map:tex, transparent:true}); const sprite=new THREE.Sprite(spriteMat); sprite.position.set(0,0.42,0); sprite.scale.set(9,1.8,1); g.add(sprite);
   g.scale.set(SCALE,SCALE,SCALE);
   return g;
 }
@@ -182,7 +178,7 @@ function setDets(list){
 }
 
 // state
-let state=null, mode='auto20', dur=20, paused=false, keys={}, joy={x:0,y:0,active:false}, launched=false, follow=true;
+let state=null, mode='auto20', dur=20, paused=false, keys={}, joy={x:0,y:0,active:false}, launched=false, follow=false; // follow OFF so drone visibly flies across ground
 const modeDur={auto20:20, auto40:40, manual:600};
 async function api(path, body){
   const r=await fetch(path,{method:body?'POST':'GET', headers:{'Content-Type':'application/json'}, body: body?JSON.stringify(body):undefined});
