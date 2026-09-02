@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "skygym"
-version = "0.2.0"
+version = "0.3.0"
 description = "SkyGym - a Gymnasium playground where a drone flies and recon sensors corrupt the truth: synthetic az/el/range/threat-ID detection streams with hidden ground truth, and a Stone Soup tracking baseline."
 readme = "README.md"
 requires-python = ">=3.9"

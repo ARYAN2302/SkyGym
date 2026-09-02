@@ -359,3 +359,160 @@ def _id_readout(tgt_rows, frames, site, true_cls: int):
         probs = [float(best_d[7 + k]) for k in range(4)]
         correct.append(int(np.argmax(probs)) == true_cls)
     return round(float(np.mean(correct)), 3) if correct else None
+
+
+# ------------------------------------------------------------------ #
+# S5: multi-target episode plumbing + grading
+# ------------------------------------------------------------------ #
+def run_episode_multi(env, seed: int, options: dict | None = None,
+                      mode: str = "fusion", eo_with_range: bool = True,
+                      assign_gate_m: float = 250.0):
+    """Multi-drone baseline: roll a fleet episode, track, grade vs witness.
+
+    Grading is a per-tick HUNGARIAN assignment (global, optimal 2D) between
+    live track positions and truth target positions, gated at
+    `assign_gate_m` - the same global-assignment philosophy the tracker's
+    GNN2D uses internally, applied to scoring.
+
+    Returns (summary_dict, track_rows, n_frames). Track rows:
+    [t, track_id, tgt_idx, e, n, u, ve, vn, vu, pos_err, az_err, el_err,
+     range_err, assign_dist_m]   (tgt_idx = -1 when unassigned)
+    """
+    try:
+        from scipy.optimize import linear_sum_assignment
+    except ImportError as e:  # pragma: no cover
+        raise ImportError("scipy is required for multi-target grading "
+                          "(pip install scipy)") from e
+
+    frames, env = roll_frames(env, seed, options)
+    detector, per_sensor, _ = build_detections(frames, env, mode=mode,
+                                               eo_with_range=eo_with_range)
+    tracker = build_tracker()
+    tracker.detector = detector
+
+    n_tgt = int(frames[0]["gt"]["n_targets"])
+    gt_t = np.array([f["t"] for f in frames])
+    # (n_frames, n_tgt, 3) truth positions
+    gt_pos = np.array([[[f["gt"]["targets"][k]["pos"][c] for c in range(3)]
+                        for k in range(n_tgt)] for f in frames])
+    site = np.asarray(env.cfg.rig.site_enu, dtype=float)
+
+    def gt_at(t):
+        i = int(np.searchsorted(gt_t, t))
+        i = int(np.clip(i, 1, len(gt_t) - 1))
+        w = (t - gt_t[i - 1]) / (gt_t[i] - gt_t[i - 1])
+        return gt_pos[i - 1] * (1 - w) + gt_pos[i] * w  # (n_tgt, 3)
+
+    rows = []
+    first_track_t = None
+    track_num: dict[str, int] = {}
+    # per-target chain of assigned track numbers, ONE entry per tick per
+    # target (None when unassigned) - the basis of the identity-switch count
+    assign_chain: list[list[int | None]] = [[] for _ in range(n_tgt)]
+    n_tracker_ticks = 0
+
+    for time, tracks in tracker:
+        t_rel = (time - T0).total_seconds()
+        n_tracker_ticks += 1
+        if first_track_t is None and tracks:
+            first_track_t = t_rel
+        G = gt_at(t_rel)  # (n_tgt, 3)
+
+        track_data = []
+        for tr in tracks:
+            sv = np.asarray(tr.state_vector).flatten()
+            tid = track_num.setdefault(str(tr.id), len(track_num) + 1)
+            track_data.append((tid, sv))
+
+        # ---- global (Hungarian) assignment tracks -> truth targets ------
+        tick_assign: dict[int, int] = {}   # index into track_data -> target
+        if track_data and n_tgt:
+            T = np.array([[sv[0], sv[2], sv[4]] for _, sv in track_data])
+            C = np.linalg.norm(T[:, None, :] - G[None, :, :], axis=-1)
+            ri, ci = linear_sum_assignment(C)
+            for i, j in zip(ri, ci):
+                if C[i, j] <= assign_gate_m:
+                    tick_assign[int(i)] = int(j)
+        inv = {j: i for i, j in tick_assign.items()}
+        for j in range(n_tgt):
+            i = inv.get(j)
+            assign_chain[j].append(track_data[i][0] if i is not None else None)
+
+        # ---- rows --------------------------------------------------------
+        for i, (tid, sv) in enumerate(track_data):
+            pos, vel = sv[[0, 2, 4]], sv[[1, 3, 5]]
+            j = tick_assign.get(i, -1)
+            nearest = float(np.min(np.linalg.norm(G - pos[None, :], axis=1))) \
+                if n_tgt else float("nan")
+            if j >= 0:
+                gp = G[j]
+                err = nearest  # == |pos - G[j]| for the assigned pair
+                az_e, el_e, r_e = cartesian_to_spherical(pos - site)
+                az_g, el_g, r_g = cartesian_to_spherical(gp - site)
+                az_err, el_err, r_err = (ang_diff_deg(az_e, az_g),
+                                         el_e - el_g, r_e - r_g)
+            else:
+                err = None
+                az_err = el_err = r_err = None
+            rows.append([round(t_rel, 3), tid, j, *pos.tolist(),
+                         *vel.tolist(), err, az_err, el_err, r_err, nearest])
+
+    # ---- summary -------------------------------------------------------
+    n_updates = {str(tr.id): len(tr.states)
+                 for tr in getattr(tracker, "tracks", set())}
+    confirmed = {track_num[sid] for sid in n_updates if sid in track_num
+                 and n_updates[sid] >= 5}
+    tgt_rows_all = [r for r in rows if r[2] is not None and r[2] >= 0]
+    assigned_track_ids = {r[1] for r in tgt_rows_all}
+    n_false = sum(1 for tid in confirmed if tid not in assigned_track_ids)
+
+    # identity switches: consecutive assigned frames with different track id
+    id_switches = 0
+    for ch in assign_chain:
+        prev = None
+        for tid in ch:
+            if tid is None:
+                continue
+            if prev is not None and tid != prev:
+                id_switches += 1
+            prev = tid
+
+    per_target = []
+    for k in range(n_tgt):
+        ch = assign_chain[k]
+        rs = [r for r in tgt_rows_all if r[2] == k]
+        entry = {
+            "idx": k,
+            "behaviour": frames[0]["gt"]["targets"][k]["behaviour"],
+            "true_class": frames[0]["gt"]["targets"][k]["true_class"],
+            # % of tracker ticks (union of all sensor scan times) where this
+            # truth target was assigned a live track
+            "tracked_pct": round(100.0 * sum(1 for x in ch if x is not None)
+                                 / max(n_tracker_ticks, 1), 1),
+            "n_tracks_used": len({r[1] for r in rs}),
+        }
+        errs = [r[9] for r in rs if r[9] is not None]
+        if errs:
+            entry["position_rmse_m"] = round(
+                float(np.sqrt(np.mean(np.square(errs)))), 2)
+            late = [e for e, r in zip(errs, rs) if r[0] >= 2.0]
+            if late:
+                entry["steady_state_mean_err_m"] = round(float(np.mean(late)), 2)
+        per_target.append(entry)
+
+    summary = {
+        "tracker": "stonesoup EKF(CV)+GNN2D+SinglePointInitiator (multi)",
+        "mode": mode, "eo_with_range": eo_with_range,
+        "seed": seed, "n_targets": n_tgt, "dets_fed": per_sensor,
+        "first_track_at_s": (round(first_track_t, 3)
+                             if first_track_t is not None else None),
+        "n_track_candidates": len(track_num),
+        "n_confirmed_tracks": len(confirmed),
+        "n_false_confirmed_tracks": n_false,
+        "identity_switches": id_switches,
+        "per_target": per_target,
+        "mean_tracked_pct": round(float(np.mean(
+            [p["tracked_pct"] for p in per_target])) if per_target else 0.0, 1),
+        "max_track_updates": max(n_updates.values()) if n_updates else 0,
+    }
+    return summary, rows, len(frames)

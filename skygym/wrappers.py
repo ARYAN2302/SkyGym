@@ -55,20 +55,31 @@ class DetectionRecorder(gym.Wrapper):
     def step(self, action):
         obs, reward, term, trunc, info = self.env.step(action)
         gt = info["gt"]
+        labels = {
+            "pos": gt["pos"].tolist(),
+            "vel": gt["vel"].tolist(),
+            "az_deg": gt["az_deg"],
+            "el_deg": gt["el_deg"],
+            "range_m": gt["range_m"],
+            "true_class": gt["true_class"],
+            "tx_on": gt["tx_on"],
+        }
+        if "targets" in gt:  # S5 multi-drone witness: one label block each
+            labels["targets"] = [{
+                "idx": tg["idx"],
+                "pos": tg["pos"].tolist(),
+                "vel": tg["vel"].tolist(),
+                "az_deg": tg["az_deg"], "el_deg": tg["el_deg"],
+                "range_m": tg["range_m"],
+                "true_class": tg["true_class"], "tx_on": tg["tx_on"],
+                "behaviour": tg["behaviour"],
+            } for tg in gt["targets"]]
         rec = {
             "meta": self._current_meta,
             "t": gt["t"],
             "obs": {k: {"dets": v["dets"][:v["n"]].tolist(), "n": v["n"]}
                     for k, v in obs.items()},
-            "labels": {
-                "pos": gt["pos"].tolist(),
-                "vel": gt["vel"].tolist(),
-                "az_deg": gt["az_deg"],
-                "el_deg": gt["el_deg"],
-                "range_m": gt["range_m"],
-                "true_class": gt["true_class"],
-                "tx_on": gt["tx_on"],
-            },
+            "labels": labels,
         }
         self._f.write(json.dumps(rec) + "\n")
         self._steps += 1

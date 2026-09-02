@@ -89,14 +89,24 @@ class Sensor:
         self._next_t = 0.0
 
     def poll(self, t_now: float, drone_pos: np.ndarray, drone_meta: dict) -> list[Detection]:
-        """Fire at the sensor's own rate; return detections for this step."""
-        rate = self.cfg.rate_hz
+        """Single-target poll (special case of poll_multi)."""
+        return self.poll_multi(t_now, [drone_pos], [drone_meta])
+
+    def poll_multi(self, t_now: float, positions, metas) -> list[Detection]:
+        """Multi-target poll (S5): fire at the sensor's own rate.
+
+        At every due scan time the sensor observes ALL supplied targets
+        (one detection attempt each) - the sensor never knows which
+        detection came from which drone; that ambiguity is the point.
+        """
         dets: list[Detection] = []
         while t_now + 1e-9 >= self._next_t:
-            d = self._observe(self._next_t, drone_pos, drone_meta)
-            if d is not None:
-                dets.append(d)
-            self._next_t += 1.0 / rate
+            t_meas = self._next_t
+            for pos, meta in zip(positions, metas):
+                d = self._observe(t_meas, pos, meta)
+                if d is not None:
+                    dets.append(d)
+            self._next_t += 1.0 / self.cfg.rate_hz
         return dets
 
     def _observe(self, t_meas: float, drone_pos: np.ndarray, meta: dict):

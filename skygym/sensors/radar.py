@@ -46,17 +46,17 @@ class RadarSensor(Sensor):
             * self.noise_scale
 
     # ------------------------------------------------------------------
-    def poll(self, t_now: float, drone_pos: np.ndarray, drone_meta: dict) -> list[Detection]:
-        """Fire at the radar's own rate.
+    def poll_multi(self, t_now, positions, metas) -> list[Detection]:
+        """Multi-target poll with per-scan Poisson clutter.
 
-        Bug fix: clutter is a Poisson process PER SCAN (birds/ground/multipath
-        enter the beam whether or not the target is detected or even in
-        range). The previous version only drew clutter when the target was
-        beyond max_range, which produced clutter-free scenes for the entire
-        in-range envelope.
+        Bug fix (kept from v0.1.1): clutter is a Poisson process PER SCAN
+        (birds/ground/multipath enter the beam whether or not any target is
+        detected or even in range) - once per consumed scan, independent of
+        the number of targets, so the false-contact rate per scan is
+        unchanged when the fleet grows.
         """
         t_prev_next = self._next_t
-        dets = super().poll(t_now, drone_pos, drone_meta)
+        dets = super().poll_multi(t_now, positions, metas)
         # clutter is drawn once per consumed scan so the Poisson rate stays
         # per-scan regardless of how many scans fired since the last poll.
         n_scans = max(0, int(round((self._next_t - t_prev_next) * self.cfg.rate_hz)))
