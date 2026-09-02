@@ -178,8 +178,8 @@ const ring2 = new THREE.Mesh(new THREE.RingGeometry(168,170,48), new THREE.MeshB
 scene.add(site);
 scene.add(new THREE.AxesHelper(240)); // X=E red, Y=Up green, Z=N blue
 
-// ---- DJI drone — visual scale 12× real (≈6m) so visible at 1-2 km, but still physics 0.5m ----
-const VIS_SCALE = 14; // visual exaggeration for 12km world
+// ---- DJI drone — VISUAL SCALE: real physics is 0.5m, but at 12km world it must be huge to see -> 32x (~11m span) + glow beacon ----
+const VIS_SCALE = 32; // 32x real => ~11m tip-to-tip, visible at 1-2km; physics still 0.5m in Python
 function makeDJI(){
   const g = new THREE.Group();
   // body
@@ -204,7 +204,14 @@ function makeDJI(){
   return g;
 }
 const drone = makeDJI(); scene.add(drone);
-const shadow = new THREE.Mesh(new THREE.CircleGeometry(2.2,20), new THREE.MeshBasicMaterial({color:0x000000, transparent:true, opacity:.34})); shadow.rotation.x=-Math.PI/2; shadow.position.y=0.18; scene.add(shadow);
+// beacon: always-visible halo + vertical beam so drone is locatable even at 2km
+const beaconHalo = new THREE.Mesh(new THREE.SphereGeometry(6.5,16,12), new THREE.MeshBasicMaterial({color:0x38bdf8, transparent:true, opacity:.22, depthWrite:false})); scene.add(beaconHalo);
+const beaconBeam = new THREE.Line(
+  new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0,0,0), new THREE.Vector3(0,80,0)]),
+  new THREE.LineBasicMaterial({color:0x38bdf8, transparent:true, opacity:.32})
+); scene.add(beaconBeam);
+const droneOutline = new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.BoxGeometry(0.36*VIS_SCALE*1.18, 0.08*VIS_SCALE*1.5, 0.28*VIS_SCALE*1.25)), new THREE.LineBasicMaterial({color:0x7dd3fc, transparent:true, opacity:.9})); scene.add(droneOutline);
+const shadow = new THREE.Mesh(new THREE.CircleGeometry(5.2,24), new THREE.MeshBasicMaterial({color:0x000000, transparent:true, opacity:.34})); shadow.rotation.x=-Math.PI/2; shadow.position.y=0.18; scene.add(shadow);
 // trail — cyan, shows true flight path from Python
 let trailPos=[]; const maxTrail=1400;
 const trailGeo=new THREE.BufferGeometry(); const trailMat=new THREE.LineBasicMaterial({color:0x38bdf8, transparent:true, opacity:.95});
@@ -290,13 +297,15 @@ const joyEnd=()=>{ joy.active=false; joy.x=0; joy.y=0; stick.style.transform='tr
 joyEl.addEventListener('pointerup',joyEnd); joyEl.addEventListener('pointercancel',joyEnd); joyEl.addEventListener('lostpointercapture',joyEnd);
 
 function applyState(res){
-  const p3=enuToThree(res.gt.pos); drone.position.copy(p3); shadow.position.set(p3.x,0.18,p3.z);
+  const p3=enuToThree(res.gt.pos); drone.position.copy(p3); shadow.position.set(p3.x,0.18,p3.z); beaconHalo.position.copy(p3); beaconBeam.position.copy(p3); droneOutline.position.copy(p3); droneOutline.rotation.copy(drone.rotation);
   // yaw from velocity: ENU vel [vx=E, vy=N] -> Three yaw around Y: atan2(E,N)
   const v=res.gt.vel; if(v[0]!==0||v[1]!==0) drone.rotation.y = Math.atan2(v[0], v[1]);
   drone.children.forEach(c=>{ if(c.name&&c.name.startsWith('prop')) c.rotation.y += 0.68; });
   trailPos.push(p3.x,p3.y,p3.z); if(trailPos.length>maxTrail*3) trailPos.splice(0,3);
   updateTrail();
-  if(document.getElementById('followChk').checked){ controls.target.lerp(p3, 0.06); }
+  // beacon pulse
+  const s = 1.0 + 0.22*Math.sin(performance.now()*0.006); beaconHalo.scale.set(s,s,s);
+  if(document.getElementById('followChk').checked){ controls.target.lerp(p3, 0.08); }
   const dets=[]; for(const k of ['radar','eo','rf']){ const arr=res.obs[k]?.dets||[]; for(let i=0;i<arr.length;i++){ const r=arr[i]; dets.push({az:r[0], el:r[1], r:r[2], clutter:(r[3]!=null&&r[3]>0.5)}); } }
   setDetMarkers(dets);
   document.getElementById('t').textContent=res.gt.t.toFixed(1)+'s';
