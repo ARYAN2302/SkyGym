@@ -18,7 +18,7 @@ Dstl's open-source tracker.
                                               (labels & eval ONLY — never input)
 ```
 
-## The one twist
+## The one Difference
 
 Every existing drone gym returns the drone's **own state** as the observation.
 SkyGym returns the **recon sensor report about the target** — azimuth,
@@ -107,7 +107,7 @@ examples/
   playground_3d.html Three.js scene + DJI model + HUD + exports
 ```
 
-## The three sensors (and how each one lies)
+## The three sensors (and how each one lies/courupts)
 
 | | Radar | EO/IR | RF DF |
 |---|---|---|---|
