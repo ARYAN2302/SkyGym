@@ -67,13 +67,17 @@ python examples/run_stonesoup.py --sensors radar  --start-km 1.2
 python examples/run_stonesoup.py --sensors fusion --start-km 1.2
 python examples/run_stonesoup.py --sensors fusion --start-km 4.0 --noise 2.0 --clutter 2.5
 
-# 5) fly it yourself (terminal with TTY)
+# 5) MULTI-DRONE (S5): fleet tracking with global assignment + identity switches
+python examples/run_multidrone.py --n 3 --episodes 4 --duration 20          # spread fleet
+python examples/run_multidrone.py --n 2 --episodes 3 --duration 60 \
+       --mix approach,approach --radius 300,320                              # collision course
+
+# 6) fly it yourself (terminal with TTY)
 python examples/interactive.py --scenario approach
 python examples/interactive.py --autopilot --scenario orbit
 
-# 6) 3D playground (Three.js + local HTTP bridge into SkyGymEnv)
+# 7) 3D playground v2 (Three.js + PPI scope + swarm + chase cam)
 python examples/playground_3d.py                # → http://localhost:8000/examples/playground_3d.html
-python examples/playground_3d.py --scenario serpentine --port 8001
 ```
 
 ## How it works (module map)
@@ -93,18 +97,23 @@ skygym/
     rf.py        az-only DF (σ≈4°) · protocol fingerprint (best ID) ·
                  deaf when drone TX off
   env.py         Gymnasium Env (reset/step, Dict obs space, witness info)
+  multidrone.py  ★ S5: MultiDroneEnv — N drones vs one site; sector fleet spawn,
+                 anonymous detections, per-target witness blocks
   wrappers.py    DetectionRecorder (JSONL+Parquet) · QAChecker · DistributionMonitor
   stone_soup.py  ★ standard tracking baseline: detections → Stone Soup EKF/GNN
-                 → graded tracks (the only consumer the test suite gates on)
+                 → graded tracks (single + multi-target with Hungarian grading)
   metrics.py     RMSE / latency / continuity / ID accuracy vs witness (adapter)
 examples/
   demo.py            end-to-end single-episode demo (eval + record + plots)
   generate_dataset.py train/val/test dataset builder
   evaluate.py        batch evaluation of the tracking baseline
   run_stonesoup.py   single-episode tracking benchmark CLI
+  run_multidrone.py  multi-drone fleet benchmark CLI (CSV + identity switches)
   interactive.py     terminal flight control
-  playground_3d.py   3D playground server (bridges Three.js UI ↔ SkyGymEnv)
-  playground_3d.html Three.js scene + DJI model + HUD + exports
+  playground_3d.py   3D playground v2 server (single + swarm bridge)
+  playground_3d.html Three.js scene · PPI scope · chase cam · fleet HUD
+docs/
+  PLAYGROUND_RESEARCH.md  design study: how to build an outstanding playground
 ```
 
 ## The three sensors (and how each one lies/courupts)
@@ -163,14 +172,56 @@ Batch statistics over the test seed range (`examples/evaluate.py`,
 2.2 m mean steady-state error.
 
 **Why Stone Soup is the standard.** SkyGym ≤ v0.1.x shipped a hand-rolled
-EKF track-while-scan baseline (`skygym/tracker.py`, removed in v0.2.0). A
-head-to-head on identical episodes showed the two agree at close range
-(built-in 17 m vs Stone Soup 33 m RMSE, radar-only) but diverge under sensor
-heterogeneity: the greedy associator let RF's wide 4° gate capture the track
-on 86/201 ticks (starving the radar fix, fragmenting track identity, 64 %
-continuity), while Stone Soup's global 2D assignment held 99.5 %. Independent,
-community-tested components make the benchmark numbers citable — and swap-in
-upgrades (UKF, JPDA, MHT, IMM) are configuration changes, not rewrites.
+EKF track-while-scan baseline (removed in v0.2.0). A head-to-head on
+identical episodes showed the two agree at close range but diverge under
+sensor heterogeneity: a greedy associator let RF's wide 4° gate capture the
+track on 86/201 ticks (starving the radar fix, fragmenting identity), while
+Stone Soup's global 2D assignment held 99.5 %. Independent, community-tested
+components make benchmark numbers citable — and swap-in upgrades (UKF, JPDA,
+MHT, IMM) are configuration changes, not rewrites.
+
+## Multi-drone (S5): when position is easy and identity is not
+
+`skygym/multidrone.py` adds `MultiDroneEnv`: N drones (2–8) fly scripted
+behaviours around one sensor site. Sensors observe the **whole fleet at
+every scan** (`Sensor.poll_multi`) and emit **anonymous detections** — no
+detection is tagged with the drone that produced it. The witness channel
+carries one truth block per target (`gt.targets[]`), so recovering the
+detection↔target correspondence *is* the benchmark task.
+
+Fleet spawn is sector-based (drone k at ~360°·k/N) with behaviour-dependent
+radii, so trajectories cross and merge by construction. `run_episode_multi`
+in `stone_soup.py` grades every tick with a **Hungarian (global) assignment**
+between tracks and truth targets, gated at 250 m, and reports per-target
+coverage, RMSE and **identity switches**.
+
+```bash
+python examples/run_multidrone.py --n 3 --episodes 4 --duration 20
+python examples/run_multidrone.py --n 2 --duration 60 \
+       --mix approach,approach --radius 300,320   # collision course
+```
+
+Three regimes, same tracker (EKF + GNN2D, fusion, seeds 20260902/31337/555+):
+
+| Regime | Geometry | Tracked | RMSE | ID switches |
+|---|---|---|---|---|
+| **Spread fleet** (3 drones, 20 s ×4) | min separation ≈ 600–1300 m | **99.9 %** | 3.9 m median | **0** |
+| **Merge** (3 converging, 30 s ×3) | min separation ≈ 190 m | **99.9 %** | 2.1 m median | **0** |
+| **Collision course** (2 converging, 60 s ×3) | drones overlap at the asset (0.1 m apart!) | **100 %** | 2.0 m median | **14–36 / episode** |
+
+Reading: with well-separated targets, global assignment is essentially a
+solved problem — one stable track per target across the whole episode, even
+radar-only. But when two drones physically overlap, position tracking stays
+perfect (~2 m) while **identities churn** — the two tracks swap labels every
+time the crossing geometry defeats the per-scan assignment. That is the
+single clearest motivation for identity-aware association (learned embeddings,
+MHT, JPDA with track management) — and it is only visible because the env
+keeps both the truth and the detections honest.
+
+Second honest number: the naive single-point initiator confirms
+~6–12 false tracks per episode from clutter (they survive on RF bearings).
+The S5 CSV therefore also serves as a false-track benchmark
+(`nearest_truth_m` column makes them easy to score).
 
 ## Dataset generation & data hygiene
 
@@ -194,7 +245,7 @@ Rules enforced in code, not docs:
 
 ## Validation gates
 
-`pytest` runs all gates in seconds (27 tests):
+`pytest` runs all gates in seconds (34 tests):
 
 | Gate | Test |
 |---|---|
@@ -204,43 +255,64 @@ Rules enforced in code, not docs:
 | Pd physics | SNR ∝ 1/r⁴, Pd collapses with range & small RCS |
 | GT separation | no witness keys in obs, enforced per step |
 | Tracker honesty | Stone Soup bridge: track initiated, bounded RMSE, sane ID readout |
+| S5 fleet | poll ≡ poll_multi · anonymous dets scale with fleet · deterministic spawn · multi grading sane · recorder per-target labels |
 
-## 3D playground
+## 3D playground v2
 
-`examples/playground_3d.py` serves a Three.js scene that talks to a real
-`SkyGymEnv` over a local HTTP bridge — the JS side only renders and sends
-acceleration commands; flight physics, sensors and recording stay in Python
-(`Gymnasium` contract untouched). Modes: Auto 20 s / Auto 40 s (autopilot),
-Manual ∞ (WASD/QE + joystick). One-click JSONL/CSV export of the recorded
-episode (truth + per-sensor lie content, one CSV = one trainable example).
+`python examples/playground_3d.py` → http://localhost:8000/examples/playground_3d.html
 
-Known limitations (and the upgrade path):
+The playground is a real instrument panel, not a tech demo. The JS side only
+renders and sends acceleration commands — physics, sensors and recording stay
+in Python under the untouched Gymnasium contract. Modes: **Auto 20 s / 40 s**
+(autopilot), **Swarm 20 s** (2–4 drones via `MultiDroneEnv`), **Manual ∞**
+(WASD/QE + joystick, flies drone 1).
 
-1. **HTTP-per-step loop** — mitigated (reentrancy guard + drift-corrected
-   catch-up batching), but a WebSocket transport would remove the remaining
-   jitter on slow machines.
-2. **Scale hacks** — the drone is drawn ~96× oversize so it stays visible at
-   km distances. The clean fix is real-scale rendering + a chase camera +
-   detections as distance-scaled sprites, plus a 2D radar PPI scope overlay
-   for the "what does each sensor see" story.
-3. **Trail rebuilds** — the thick trail re-uploads its geometry every step;
-   preallocating a `BufferAttribute` + `drawRange` removes the GC churn.
-4. **Detections as meshes** — pooled `InstancedMesh` instead of per-step
-   sphere allocation.
+- **Two layers, never mixed** — the 3D scene renders truth (fleet, trails,
+  sensor-volume wireframes at the real 5/6/8 km sensor ranges); the
+  **PPI radar scope** (bottom-left) renders measurements: north-up polar,
+  2 km range rings, rotating sweep, afterglow blips, clutter in amber,
+  RF bearings as rim arcs, per-drone truth ghosts. Watching the PPI is the
+  fastest way to understand why RF cannot give range.
+- **Camera grammar** (`C`) — Orbit · Chase (damped velocity-vector follow with
+  look-ahead) · Tower (the sensor operator's frame) · Top (tactical north-up).
+- **Swarm-native HUD** — per-drone colour, trail, PPI ghost and a witness
+  fleet table (behaviour / range / az / alt) that never shifts layout.
+- **Smooth motion** — fixed-step accumulator with catch-up batching and
+  render-time interpolation; instanced detection pools (no per-frame
+  allocation); scale toggle 40× / real 0.5 m for honest screenshots.
+- **One-click export** — JSONL or CSV; swarm CSV writes one labelled row per
+  target per tick.
+
+The engineering rationale — what Foxglove/Cesium/PPI scopes do, why v1 felt
+bad, the seven design principles, the latency budget and the verdict
+criteria for the next iteration — is written up in
+[`docs/PLAYGROUND_RESEARCH.md`](docs/PLAYGROUND_RESEARCH.md).
 
 ## Roadmap
 
-1. **Multi-drone (S5)** — PettingZoo Parallel API; N targets in the same env
-   class (n=1 is the degenerate case); data association becomes the game.
+1. **Identity-aware association (S5 follow-up)** — the collision-course
+   regime (100 % tracked, dozens of ID switches) is the target: track-state
+   embeddings, MHT or JPDA via Stone Soup config swaps; a learned associator
+   trained on S5 (lie, truth) pairs.
 2. **Fidelity (S6)** — PyBullet backend (attitude dynamics) and/or
    vectorised backend behind the same Gymnasium API; image-based ID branch.
 3. **Learned fusion** — the reason this benchmark exists: train a policy on
    the (lie, truth) pairs to beat the Stone Soup baseline where classical
-   filters die (far range, bearing-only regimes, dense clutter).
-4. **Stronger classical baselines** — UKF / IMM / JPDA / MHT via Stone Soup
-   config swaps; multi-target episodes with per-target ID.
+   filters die (far range, bearing-only regimes, dense clutter, false-track
+   suppression).
+4. **Live tracking overlay in the playground** — run `stone_soup.py` inside
+   the playground server and draw tracks vs truth ghosts in real time.
+5. **PettingZoo-style control** — manual control of the whole fleet
+   (adversarial evasion vs the tracker).
 
 ## Changelog
+
+- **v0.3.0** — S5 multi-drone: `MultiDroneEnv` + `Sensor.poll_multi()`
+  (anonymous fleet detections), `run_episode_multi` with Hungarian grading,
+  identity-switch metric; `examples/run_multidrone.py` benchmark CLI;
+  playground v2 (PPI scope, camera grammar, instanced detections, swarm
+  mode, per-target witness HUD, swarm CSV export); design study in
+  `docs/PLAYGROUND_RESEARCH.md`; 34 tests.
 
 - **v0.2.0** — Stone Soup is the standard tracking baseline
   (`skygym/stone_soup.py` + `examples/evaluate.py`); EO stereo range is now
@@ -256,5 +328,5 @@ Known limitations (and the upgrade path):
 ## Status
 
 MIT licensed. Defensive research tooling — synthetic data for
-detection/tracking algorithm development. Tests: 27 passing
+detection/tracking algorithm development. Tests: 34 passing
 (`python -m pytest`).
