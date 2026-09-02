@@ -66,7 +66,7 @@
   <h3>Obs (sensor reports)</h3>
   <div id="obs" class="mono">Press Launch — drone will appear (big DJI + beam)</div>
   <h3>Trail & visibility</h3>
-  <div class="help">Drone is <b>64× exaggerated</b> (real 0.5m physics → 27m visual) + halo + beam so you see it at 2km. <b>Thick cyan tube</b> = <b>entire flight path</b> (all t, not just t=0) — grows each 0.1s step from Python truth. If you don't see it, click <b>Recenter</b>.</div>
+  <div class="help">Drone is <b>96× ultra-big</b> (real 0.5m physics → 40m visual) + halo 18m + beam 180m. <b>Thick cyan tube</b> = <b>entire flight path</b> (all t, not just t=0) — grows each 0.1s from Python core. Stops after one run (no auto-loop) — click <b>Launch</b> for next. If you don't see it, click <b>Recenter</b>.</div>
   <div class="row"><button id="follow" class="on">Follow: ON</button><button id="recenter">Recenter</button><button id="clear">Clear trail</button></div>
   <div class="help"><b>Manual:</b> Click canvas first (focus), then hold <b>W</b> north · <b>S</b> south · <b>A/D</b> west/east · <b>Q/E</b> down/up · <b>Space</b> hover. Joystick + mouse orbit also.</div>
 </div>
@@ -113,8 +113,8 @@ const dish=new THREE.Mesh(new THREE.SphereGeometry(16,16,12,0,Math.PI*2,0,Math.P
 const ring=new THREE.Mesh(new THREE.RingGeometry(88,90,48), new THREE.MeshBasicMaterial({color:0x38bdf8, transparent:true, opacity:.22, side:THREE.DoubleSide})); ring.rotation.x=-Math.PI/2; ring.position.y=1.2; site.add(ring);
 scene.add(site);
 
-// ——— DJI MAVIC 3 — 64× visual exaggeration so you SEE it at 2km ———
-const SCALE=64; // 0.42*64≈27m span — huge but necessary for 12km world; physics still 0.5m
+// ——— DJI MAVIC 3 — 96× ultra-big so you SEE it at 2km ———
+const SCALE=96; // 0.42*96≈40m span — ultra huge for visibility; physics still 0.5m (core unchanged)
 function makeDJI(){
   const g=new THREE.Group();
   // high-contrast white body with dark belly — unmistakable DJI
@@ -136,30 +136,39 @@ function makeDJI(){
   const legB=legA.clone(); legB.position.set(-0.12,-0.08,0.06); g.add(legB);
   // label sprite
   const canv=document.createElement('canvas'); canv.width=420; canv.height=84; const ctx=canv.getContext('2d');
-  ctx.fillStyle='rgba(14,165,233,0.92)'; ctx.fillRect(0,0,420,84); ctx.fillStyle='#001018'; ctx.font='700 28px system-ui'; ctx.fillText('DJI MAVIC 3', 18, 36); ctx.font='600 18px system-ui'; ctx.fillText('64× VISUAL  •  0.5m PHYSICS', 18, 62);
+  ctx.fillStyle='rgba(14,165,233,0.92)'; ctx.fillRect(0,0,420,84); ctx.fillStyle='#001018'; ctx.font='700 28px system-ui'; ctx.fillText('DJI MAVIC 3', 18, 36); ctx.font='600 18px system-ui'; ctx.fillText('96× ULTRA-BIG  •  0.5m PHYSICS', 18, 62);
   const tex=new THREE.CanvasTexture(canv); const spriteMat=new THREE.SpriteMaterial({map:tex, transparent:true}); const sprite=new THREE.Sprite(spriteMat); sprite.position.set(0,0.42,0); sprite.scale.set(9,1.8,1); g.add(sprite);
   g.scale.set(SCALE,SCALE,SCALE);
   return g;
 }
 const drone=makeDJI(); scene.add(drone);
-const halo=new THREE.Mesh(new THREE.SphereGeometry(12.5,18,14), new THREE.MeshBasicMaterial({color:0x38bdf8, transparent:true, opacity:.22, depthWrite:false})); scene.add(halo);
-const beam=new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0,0,0), new THREE.Vector3(0,110,0)]), new THREE.LineBasicMaterial({color:0x38bdf8, transparent:true, opacity:.45})); scene.add(beam);
+const halo=new THREE.Mesh(new THREE.SphereGeometry(18,20,16), new THREE.MeshBasicMaterial({color:0x38bdf8, transparent:true, opacity:.24, depthWrite:false})); scene.add(halo);
+const beam=new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0,0,0), new THREE.Vector3(0,180,0)]), new THREE.LineBasicMaterial({color:0x38bdf8, transparent:true, opacity:.55})); scene.add(beam);
 const outline=new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.BoxGeometry(0.42*SCALE*1.18, 0.10*SCALE*1.8, 0.32*SCALE*1.35)), new THREE.LineBasicMaterial({color:0xf8fafc, transparent:true, opacity:.92})); scene.add(outline);
-const shadow=new THREE.Mesh(new THREE.CircleGeometry(10.5,24), new THREE.MeshBasicMaterial({color:0x000000, transparent:true, opacity:.36})); shadow.rotation.x=-Math.PI/2; shadow.position.y=0.18; scene.add(shadow);
+const shadow=new THREE.Mesh(new THREE.CircleGeometry(15,28), new THREE.MeshBasicMaterial({color:0x000000, transparent:true, opacity:.38})); shadow.rotation.x=-Math.PI/2; shadow.position.y=0.18; scene.add(shadow);
 
 // trail — thick Line2 so you SEE entire path (not just t=0)
-let trail=[]; const maxTrail=2400; // allow full 600s @10Hz = 6000 pts, cap 2400 for perf
-let line2=null; function ensureLine2(){
+let trail=[]; const maxTrail=6000; // full path up to 600s @10Hz, no cap needed for 40s
+let line2=null;
+let fallbackLine=null; // simple Line fallback + spheres so trail ALWAYS visible even if Line2 fails
+function ensureLine2(){
   if(line2) scene.remove(line2);
   const geom=new LineGeometry(); geom.setPositions(trail);
-  const mat=new LineMaterial({color:0x38bdf8, linewidth:7, transparent:true, opacity:.98, resolution: new THREE.Vector2(innerWidth, innerHeight)});
+  const mat=new LineMaterial({color:0x38bdf8, linewidth:10, transparent:true, opacity:1.0, resolution: new THREE.Vector2(innerWidth, innerHeight)});
   line2=new Line2(geom, mat); line2.computeLineDistances(); scene.add(line2);
+  // fallback thin line + spheres for max visibility
+  if(fallbackLine) scene.remove(fallbackLine);
+  const g2=new THREE.BufferGeometry(); g2.setAttribute('position', new THREE.Float32BufferAttribute(new Float32Array(trail),3));
+  fallbackLine=new THREE.Line(g2, new THREE.LineBasicMaterial({color:0x22d3ee, transparent:true, opacity:.95}));
+  scene.add(fallbackLine);
 }
 function updateTrail(){
-  if(trail.length<6){ if(line2){ scene.remove(line2); line2=null; } document.getElementById('trailN').textContent='0'; return; }
-  if(!line2){ ensureLine2(); } else { line2.geometry.setPositions(trail); line2.computeLineDistances(); line2.material.resolution.set(innerWidth, innerHeight); }
+  if(trail.length<6){ if(line2){ scene.remove(line2); line2=null; } if(fallbackLine){ scene.remove(fallbackLine); fallbackLine=null; } document.getElementById('trailN').textContent='0'; return; }
+  if(!line2){ ensureLine2(); } else {
+    line2.geometry.setPositions(trail); line2.computeLineDistances(); line2.material.resolution.set(innerWidth, innerHeight);
+    if(fallbackLine){ fallbackLine.geometry.setAttribute('position', new THREE.Float32BufferAttribute(new Float32Array(trail),3)); fallbackLine.geometry.attributes.position.needsUpdate=true; }
+  }
   document.getElementById('trailN').textContent=String(trail.length/3);
-  // also thin Line fallback for fog
 }
 const detG=new THREE.Group(); scene.add(detG);
 function setDets(list){
@@ -245,13 +254,20 @@ function apply(res){
   document.getElementById('t0').textContent=res.gt.t.toFixed(1)+'s';
 }
 
-// focus hint
-canvas.addEventListener('click',()=> canvas.focus());
-window.addEventListener('keydown',e=>{
-  // ensure canvas focused for WASD
-  const k=e.key.toLowerCase(); keys[k]=true; if(['w','a','s','d','q','e',' '].includes(k)) e.preventDefault(); if(k==='r') reset(); if(k==='p') document.getElementById('pause').click();
-});
-window.addEventListener('keyup',e=> keys[e.key.toLowerCase()]=false);
+// focus hint — make WASD work globally (no click needed) + also on canvas
+function setFocusHint(on){ document.getElementById('focusHint').style.display = on? 'none':'block'; }
+document.addEventListener('keydown',e=>{
+  const k=e.key.toLowerCase();
+  if(['w','a','s','d','q','e',' '].includes(k)) { keys[k]=true; e.preventDefault(); setFocusHint(true); }
+  else keys[k]=true;
+  if(k==='r') reset(); if(k==='p') document.getElementById('pause').click();
+  // live debug for manual
+  if(mode==='manual' && launched) document.getElementById('live').textContent = `● manual keys ${Object.keys(keys).filter(x=>keys[x]).join('+')||'—'}`;
+}, {capture:true});
+document.addEventListener('keyup',e=> { keys[e.key.toLowerCase()]=false; if(mode==='manual') document.getElementById('live').textContent='● live'; }, {capture:true});
+canvas.addEventListener('click',()=> { canvas.focus(); setFocusHint(true); });
+canvas.addEventListener('focus',()=> setFocusHint(true));
+canvas.addEventListener('blur',()=> { if(mode==='manual') setFocusHint(false); });
 const joyEl=document.getElementById('joy'), stick=document.getElementById('stick');
 function jpos(ev){ const r=joyEl.getBoundingClientRect(); const t=ev.touches?ev.touches[0]:ev; let x=(t.clientX-(r.left+r.width/2))/(r.width/2), y=(t.clientY-(r.top+r.height/2))/(r.height/2); const l=Math.hypot(x,y); if(l>1){x/=l; y/=l} return {x,y}; }
 joyEl.addEventListener('pointerdown',e=>{ joy.active=true; joyEl.setPointerCapture(e.pointerId); });
@@ -284,8 +300,8 @@ async function tick(){
   try{
     const res=await api('/api/step',{action}); state=res; apply(res);
     if(res.terminated||res.truncated){
-      showMsg(mode==='manual'?'Manual ended — Export JSONL/CSV':`Auto ${dur}s complete — full path ${trail.length/3} pts — Export now`, 3400);
-      if(mode!=='manual') setTimeout(()=> reset(), 1500);
+      launched=false; // STOP — do not auto-restart, user must click Launch for next run
+      showMsg(mode==='manual'?'Manual ended — Export JSONL/CSV':`Auto ${dur}s complete — full path ${trail.length/3} pts — click Launch for next`, 3800);
     }
   }catch(e){ console.error(e); document.getElementById('live').textContent='● error'; document.getElementById('live').style.color='#fecaca'; }
 }
@@ -302,9 +318,8 @@ function anim(){
 }
 anim();
 window.addEventListener('resize',()=>{ renderer.setSize(innerWidth,innerHeight,false); camera.aspect=innerWidth/innerHeight; camera.updateProjectionMatrix(); if(line2) line2.material.resolution.set(innerWidth, innerHeight); });
-showMsg('Pick Auto 20s / 40s or Manual ∞ then click Launch — DJI is 64× scaled so you can see it', 4000);
-// auto-launch so you see entire path immediately (not just t=0) — you can still switch modes and re-Launch
-setTimeout(()=>{ if(!launched) { showMsg('Auto-launching 20s demo — trail will grow for entire path', 2200); launch(); } }, 900);
+showMsg('Pick Auto 20s / 40s or Manual ∞ then click Launch — DJI is 96× ultra-big so you can see it', 4000);
+// no auto-launch — user controls when to start so trail/drone are clearly tied to core steps
 </script>
 </body>
 </html>
