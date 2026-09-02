@@ -66,7 +66,7 @@
   <h3>Obs (sensor reports)</h3>
   <div id="obs" class="mono">Press Launch — drone will appear (big DJI + beam)</div>
   <h3>Trail & visibility</h3>
-  <div class="help">Drone is <b>48× exaggerated</b> (real 0.5m physics → 24m visual) + halo + beam so you see it at 2km. Cyan tube = <b>entire flight path</b> (all t, not just t=0) — grows each step from Python truth. If you don't see it, click <b>Recenter</b> or toggle <b>Follow</b>.</div>
+  <div class="help">Drone is <b>64× exaggerated</b> (real 0.5m physics → 27m visual) + halo + beam so you see it at 2km. <b>Thick cyan tube</b> = <b>entire flight path</b> (all t, not just t=0) — grows each 0.1s step from Python truth. If you don't see it, click <b>Recenter</b>.</div>
   <div class="row"><button id="follow" class="on">Follow: ON</button><button id="recenter">Recenter</button><button id="clear">Clear trail</button></div>
   <div class="help"><b>Manual:</b> Click canvas first (focus), then hold <b>W</b> north · <b>S</b> south · <b>A/D</b> west/east · <b>Q/E</b> down/up · <b>Space</b> hover. Joystick + mouse orbit also.</div>
 </div>
@@ -113,8 +113,8 @@ const dish=new THREE.Mesh(new THREE.SphereGeometry(16,16,12,0,Math.PI*2,0,Math.P
 const ring=new THREE.Mesh(new THREE.RingGeometry(88,90,48), new THREE.MeshBasicMaterial({color:0x38bdf8, transparent:true, opacity:.22, side:THREE.DoubleSide})); ring.rotation.x=-Math.PI/2; ring.position.y=1.2; site.add(ring);
 scene.add(site);
 
-// ——— DJI MAVIC 3 — 48× visual exaggeration so you SEE it at 2km ———
-const SCALE=48; // 0.42*48≈20m span — huge but necessary for 12km world; physics still 0.5m
+// ——— DJI MAVIC 3 — 64× visual exaggeration so you SEE it at 2km ———
+const SCALE=64; // 0.42*64≈27m span — huge but necessary for 12km world; physics still 0.5m
 function makeDJI(){
   const g=new THREE.Group();
   // high-contrast white body with dark belly — unmistakable DJI
@@ -136,16 +136,16 @@ function makeDJI(){
   const legB=legA.clone(); legB.position.set(-0.12,-0.08,0.06); g.add(legB);
   // label sprite
   const canv=document.createElement('canvas'); canv.width=420; canv.height=84; const ctx=canv.getContext('2d');
-  ctx.fillStyle='rgba(14,165,233,0.92)'; ctx.fillRect(0,0,420,84); ctx.fillStyle='#001018'; ctx.font='700 28px system-ui'; ctx.fillText('DJI MAVIC 3', 18, 36); ctx.font='600 18px system-ui'; ctx.fillText('48× VISUAL  •  0.5m PHYSICS', 18, 62);
+  ctx.fillStyle='rgba(14,165,233,0.92)'; ctx.fillRect(0,0,420,84); ctx.fillStyle='#001018'; ctx.font='700 28px system-ui'; ctx.fillText('DJI MAVIC 3', 18, 36); ctx.font='600 18px system-ui'; ctx.fillText('64× VISUAL  •  0.5m PHYSICS', 18, 62);
   const tex=new THREE.CanvasTexture(canv); const spriteMat=new THREE.SpriteMaterial({map:tex, transparent:true}); const sprite=new THREE.Sprite(spriteMat); sprite.position.set(0,0.42,0); sprite.scale.set(9,1.8,1); g.add(sprite);
   g.scale.set(SCALE,SCALE,SCALE);
   return g;
 }
 const drone=makeDJI(); scene.add(drone);
-const halo=new THREE.Mesh(new THREE.SphereGeometry(9.5,18,14), new THREE.MeshBasicMaterial({color:0x38bdf8, transparent:true, opacity:.18, depthWrite:false})); scene.add(halo);
+const halo=new THREE.Mesh(new THREE.SphereGeometry(12.5,18,14), new THREE.MeshBasicMaterial({color:0x38bdf8, transparent:true, opacity:.22, depthWrite:false})); scene.add(halo);
 const beam=new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0,0,0), new THREE.Vector3(0,110,0)]), new THREE.LineBasicMaterial({color:0x38bdf8, transparent:true, opacity:.45})); scene.add(beam);
 const outline=new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.BoxGeometry(0.42*SCALE*1.18, 0.10*SCALE*1.8, 0.32*SCALE*1.35)), new THREE.LineBasicMaterial({color:0xf8fafc, transparent:true, opacity:.92})); scene.add(outline);
-const shadow=new THREE.Mesh(new THREE.CircleGeometry(7.5,24), new THREE.MeshBasicMaterial({color:0x000000, transparent:true, opacity:.32})); shadow.rotation.x=-Math.PI/2; shadow.position.y=0.18; scene.add(shadow);
+const shadow=new THREE.Mesh(new THREE.CircleGeometry(10.5,24), new THREE.MeshBasicMaterial({color:0x000000, transparent:true, opacity:.36})); shadow.rotation.x=-Math.PI/2; shadow.position.y=0.18; scene.add(shadow);
 
 // trail — thick Line2 so you SEE entire path (not just t=0)
 let trail=[]; const maxTrail=2400; // allow full 600s @10Hz = 6000 pts, cap 2400 for perf
@@ -302,9 +302,9 @@ function anim(){
 }
 anim();
 window.addEventListener('resize',()=>{ renderer.setSize(innerWidth,innerHeight,false); camera.aspect=innerWidth/innerHeight; camera.updateProjectionMatrix(); if(line2) line2.material.resolution.set(innerWidth, innerHeight); });
-showMsg('Pick Auto 20s / 40s or Manual ∞ then click Launch — DJI is 48× scaled so you can see it', 4000);
-// auto-launch for quick visual check (can be dismissed)
-setTimeout(()=>{ if(!launched) showMsg('Click Launch to start — trail will grow for entire path, not just t=0', 3000); }, 600);
+showMsg('Pick Auto 20s / 40s or Manual ∞ then click Launch — DJI is 64× scaled so you can see it', 4000);
+// auto-launch so you see entire path immediately (not just t=0) — you can still switch modes and re-Launch
+setTimeout(()=>{ if(!launched) { showMsg('Auto-launching 20s demo — trail will grow for entire path', 2200); launch(); } }, 900);
 </script>
 </body>
 </html>
