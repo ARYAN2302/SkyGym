@@ -3,17 +3,17 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>SkyGym — Simple 3D Gym</title>
+<title>SkyGym — Simple Gym (DJI + 3 Sensors)</title>
 <script async src="https://unpkg.com/es-module-shims@1.8.0/dist/es-module-shims.js"></script>
 <script type="importmap">{"imports":{"three":"https://unpkg.com/three@0.160.0/build/three.module.js","three/addons/":"https://unpkg.com/three@0.160.0/examples/jsm/"}}</script>
 <style>
   *{box-sizing:border-box;margin:0;padding:0}
   body{font-family:system-ui,sans-serif;background:#070b14;color:#e6e8ec;overflow:hidden}
-  #c{position:fixed;inset:0;display:block;width:100vw;height:100vh}
+  #c{position:fixed;inset:0;width:100vw;height:100vh;display:block}
   #top{position:fixed;top:10px;left:10px;right:10px;display:flex;gap:8px;flex-wrap:wrap;z-index:2}
   .pill{background:#0f172a;border:1px solid #263554;border-radius:999px;padding:6px 12px;font-size:12px}
   .pill b{color:#7dd3fc}
-  #box{position:fixed;right:12px;top:48px;width:360px;background:rgba(10,16,28,.98);border:1px solid #1e2e45;border-radius:14px;padding:14px;z-index:3}
+  #box{position:fixed;right:12px;top:46px;width:380px;background:rgba(10,16,28,.98);border:1px solid #1e2e45;border-radius:14px;padding:14px;z-index:3;max-height:calc(100vh - 60px);overflow:auto}
   #box h3{font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:#94a3b8;margin:10px 0 6px}
   #box h3:first-child{margin:0 0 8px}
   .row{display:flex;gap:8px;margin:6px 0}
@@ -21,25 +21,26 @@
   button:hover{border-color:#38bdf8}
   button.on{background:#0ea5e9;color:#001018;border-color:#38bdf8;font-weight:800}
   button.primary{background:#22c55e;color:#001018;border-color:#4ade80;font-weight:800}
-  .bar{height:10px;background:#0b1220;border:1px solid #1e2e45;border-radius:999px;overflow:hidden}
+  .bar{height:12px;background:#0b1220;border:1px solid #1e2e45;border-radius:999px;overflow:hidden}
   .fill{height:100%;width:0%;background:linear-gradient(90deg,#0ea5e9,#22c55e);transition:width .12s}
-  .mono{font-family:ui-monospace,monospace;font-size:11px;white-space:pre-wrap;background:#0b1220;border:1px solid #1e2e45;border-radius:10px;padding:8px;max-height:160px;overflow:auto}
+  .mono{font-family:ui-monospace,monospace;font-size:11px;white-space:pre-wrap;background:#0b1220;border:1px solid #1e2e45;border-radius:10px;padding:8px;max-height:150px;overflow:auto}
   .help{font-size:11px;color:#94a3b8;line-height:1.45}
-  #joy{position:fixed;left:18px;bottom:18px;width:140px;height:140px;background:rgba(15,23,42,.46);border:1px solid #263554;border-radius:50%;z-index:3;touch-action:none}
-  #stick{position:absolute;left:50%;top:50%;width:52px;height:52px;margin:-26px 0 0 -26px;background:radial-gradient(circle at 30% 30%,#7dd3fc,#0ea5e9);border-radius:50%}
-  #msg{position:fixed;left:50%;top:46%;transform:translate(-50%,-50%);background:#0f172a;border:1px solid #38bdf8;color:#e0f2fe;padding:14px 18px;border-radius:12px;font-size:13px;display:none;z-index:4;max-width:520px;text-align:center}
+  #joy{position:fixed;left:18px;bottom:18px;width:150px;height:150px;background:rgba(15,23,42,.46);border:1px solid #263554;border-radius:50%;z-index:3;touch-action:none}
+  #stick{position:absolute;left:50%;top:50%;width:56px;height:56px;margin:-28px 0 0 -28px;background:radial-gradient(circle at 30% 30%,#7dd3fc,#0ea5e9);border-radius:50%}
+  #msg{position:fixed;left:50%;top:44%;transform:translate(-50%,-50%);background:#0f172a;border:1px solid #38bdf8;color:#e0f2fe;padding:14px 18px;border-radius:12px;font-size:13px;display:none;z-index:4;max-width:520px;text-align:center}
+  #focusHint{position:fixed;left:50%;bottom:10px;transform:translateX(-50%);background:rgba(15,23,42,.85);border:1px solid #263554;border-radius:999px;padding:6px 12px;font-size:11px;z-index:3}
 </style>
 </head>
 <body>
-<canvas id="c"></canvas>
+<canvas id="c" tabindex="0"></canvas>
 <div id="msg"></div>
 <div id="top">
-  <div class="pill">SkyGym <b>Simple Gym</b> · core <code>skygym/env.py</code></div>
-  <div class="pill"><span id="mode">—</span> · t <b id="t">0.0s</b> / <b id="dur">—</b> · <span id="live" style="color:#bbf7d0">● live</span> · FPS <b id="fps">—</b></div>
-  <div class="pill">Range <b id="range">—</b> · Dets <b id="ndets">0</b> (<span id="r"></span>/<span id="e"></span>/<span id="f"></span>)</div>
+  <div class="pill">SkyGym <b>DJI 3D Gym</b> · 1 drone · <code>skygym/env.py</code></div>
+  <div class="pill"><span id="mode">—</span> · t <b id="t">0.0s</b> / <b id="dur">—</b> <span id="live" style="color:#bbf7d0">● live</span> FPS <b id="fps">—</b></div>
+  <div class="pill">Range <b id="range">—</b> · Dets <b id="ndets">0</b> (R<span id="r">0</span>/E<span id="e">0</span>/F<span id="f">0</span>)</div>
 </div>
 <div id="box">
-  <h3>1 drone · 3 modes — autonomous 20s / 40s · manual (as long as you want)</h3>
+  <h3>1 DJI drone · 3 modes — pick then Launch</h3>
   <div class="row">
     <button id="a20" class="on">Auto 20s</button>
     <button id="a40">Auto 40s</button>
@@ -51,56 +52,60 @@
     <button id="reset">Reset</button>
   </div>
   <div class="bar" style="margin:8px 0 4px"><div id="fill" class="fill"></div></div>
-  <div style="display:flex;justify-content:space-between;font-size:11px;color:#94a3b8"><span id="t0">0.0s</span><span id="t1">20.0s</span></div>
+  <div style="display:flex;justify-content:space-between;font-size:11px;color:#94a3b8"><span id="t0">0.0s</span><span id="t1">20.0s</span><span id="pct">0%</span></div>
 
-  <h3>3 data points as it flies (live)</h3>
+  <h3>3 data points live as it flies</h3>
   <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;font-size:11px">
-    <div style="background:#0b1220;border:1px solid #1e2e45;border-radius:10px;padding:7px"><span style="color:#94a3b8;font-size:9px">RADAR 10Hz</span><br><b id="cR">0</b> dets</div>
-    <div style="background:#0b1220;border:1px solid #1e2e45;border-radius:10px;padding:7px"><span style="color:#94a3b8;font-size:9px">EO 30Hz</span><br><b id="cE">0</b> dets</div>
-    <div style="background:#0b1220;border:1px solid #1e2e45;border-radius:10px;padding:7px"><span style="color:#94a3b8;font-size:9px">RF 5Hz</span><br><b id="cF">0</b> dets</div>
+    <div style="background:#0b1220;border:1px solid #1e2e45;border-radius:10px;padding:7px"><span style="color:#94a3b8;font-size:9px">RADAR 10Hz</span><br><b id="cR">0</b> · <span id="cR2" style="opacity:.7">—</span></div>
+    <div style="background:#0b1220;border:1px solid #1e2e45;border-radius:10px;padding:7px"><span style="color:#94a3b8;font-size:9px">EO 30Hz</span><br><b id="cE">0</b></div>
+    <div style="background:#0b1220;border:1px solid #1e2e45;border-radius:10px;padding:7px"><span style="color:#94a3b8;font-size:9px">RF 5Hz</span><br><b id="cF">0</b></div>
   </div>
-  <div class="row">
-    <button id="expJ">Export JSONL</button>
-    <button id="expC">Export CSV</button>
-  </div>
-  <div style="display:flex;gap:6px;font-size:11px;color:#94a3b8"><span>Steps <b id="steps" style="color:#e2e8f0">0</b></span><span>· Total dets <b id="tot" style="color:#e2e8f0">0</b></span></div>
+  <div class="row"><button id="expJ">Export JSONL</button><button id="expC">Export CSV</button></div>
+  <div style="font-size:11px;color:#94a3b8">Steps <b id="steps" style="color:#e2e8f0">0</b> · Total dets <b id="tot" style="color:#e2e8f0">0</b> · Trail pts <b id="trailN" style="color:#e2e8f0">0</b></div>
 
   <h3>Obs (sensor reports)</h3>
-  <div id="obs" class="mono">Press Launch</div>
-  <h3>Controls</h3>
-  <div class="help"><b>Manual:</b> hold <b>W</b> north · <b>S</b> south · <b>A/D</b> west/east · <b>Q/E</b> down/up · <b>Space</b> brake<br>Joystick bottom-left · Mouse drag orbit · Wheel zoom · Auto modes ignore keys.</div>
+  <div id="obs" class="mono">Press Launch — drone will appear (big DJI + beam)</div>
+  <h3>Trail & visibility</h3>
+  <div class="help">Drone is <b>48× exaggerated</b> (real 0.5m physics → 24m visual) + halo + beam so you see it at 2km. Cyan tube = <b>entire flight path</b> (all t, not just t=0) — grows each step from Python truth. If you don't see it, click <b>Recenter</b> or toggle <b>Follow</b>.</div>
+  <div class="row"><button id="follow" class="on">Follow: ON</button><button id="recenter">Recenter</button><button id="clear">Clear trail</button></div>
+  <div class="help"><b>Manual:</b> Click canvas first (focus), then hold <b>W</b> north · <b>S</b> south · <b>A/D</b> west/east · <b>Q/E</b> down/up · <b>Space</b> hover. Joystick + mouse orbit also.</div>
 </div>
 <div id="joy"><div id="stick"></div></div>
+<div id="focusHint">Click canvas to enable <b>WASD</b> manual control</div>
 
 <script type="module">
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { Line2 } from 'three/addons/lines/Line2.js';
+import { LineMaterial } from 'three/addons/lines/LineMaterial.js';
+import { LineGeometry } from 'three/addons/lines/LineGeometry.js';
 
-// Y-up: ENU [E,N,U] -> Three [x=E, y=U, z=N]
+// ENU [E,N,U] -> Three [x=E, y=U, z=N]
 const to3 = p => new THREE.Vector3(p[0], p[2], p[1]);
-const sphToEnu = (az,el,r)=>{ const a=az*Math.PI/180,e=el*Math.PI/180; return [r*Math.cos(e)*Math.sin(a), r*Math.cos(e)*Math.cos(a), r*Math.sin(e)]; };
+const sphToEnu=(az,el,r)=>{ const a=az*Math.PI/180,e=el*Math.PI/180; return [r*Math.cos(e)*Math.sin(a), r*Math.cos(e)*Math.cos(a), r*Math.sin(e)]; };
 
 const canvas=document.getElementById('c');
-const renderer=new THREE.WebGLRenderer({canvas,antialias:true}); renderer.setPixelRatio(Math.min(devicePixelRatio,2));
-renderer.shadowMap.enabled=true;
-const scene=new THREE.Scene(); scene.background=new THREE.Color(0x070b14); scene.fog=new THREE.Fog(0x070b14, 2600, 9000);
+const renderer=new THREE.WebGLRenderer({canvas,antialias:true,logarithmicDepthBuffer:true});
+renderer.setPixelRatio(Math.min(devicePixelRatio,2)); renderer.shadowMap.enabled=true;
+const scene=new THREE.Scene(); scene.background=new THREE.Color(0x070b14);
+scene.fog=new THREE.Fog(0x070b14, 3500, 9000); // lighter fog so trail/drone not hidden at 2km
 const camera=new THREE.PerspectiveCamera(60, innerWidth/innerHeight, 0.1, 30000);
 camera.position.set(520,420,-1100); camera.up.set(0,1,0);
 const controls=new OrbitControls(camera, renderer.domElement);
 controls.enableDamping=true; controls.dampingFactor=0.08; controls.target.set(0,60,0);
-controls.minDistance=20; controls.maxDistance=8000;
+controls.minDistance=15; controls.maxDistance=8000;
+canvas.focus();
 
 // lights
-scene.add(new THREE.HemisphereLight(0x8ec8ff, 0x070b14, 1.1));
-const sun=new THREE.DirectionalLight(0xffffff,1.1); sun.position.set(800,900,600); sun.castShadow=true;
+scene.add(new THREE.HemisphereLight(0x8ec8ff, 0x070b14, 1.15));
+const sun=new THREE.DirectionalLight(0xffffff,1.12); sun.position.set(800,900,600); sun.castShadow=true;
 sun.shadow.mapSize.set(2048,2048); sun.shadow.camera.left=-4000; sun.shadow.camera.right=4000; sun.shadow.camera.top=4000; sun.shadow.camera.bottom=-4000;
 scene.add(sun);
 
 // ground
-const ground=new THREE.Mesh(new THREE.PlaneGeometry(12000,12000), new THREE.MeshStandardMaterial({color:0x0e1e33, roughness:.95}));
+const ground=new THREE.Mesh(new THREE.PlaneGeometry(14000,14000), new THREE.MeshStandardMaterial({color:0x0e1e33, roughness:.93}));
 ground.rotation.x=-Math.PI/2; ground.position.y=0; ground.receiveShadow=true; scene.add(ground);
 const grid=new THREE.GridHelper(12000,48,0x1f3a5e,0x14304d); grid.position.y=0.2; scene.add(grid);
-// site
 const site=new THREE.Group();
 const base=new THREE.Mesh(new THREE.CylinderGeometry(26,28,16,22), new THREE.MeshStandardMaterial({color:0x0ea5e9})); base.position.y=8; base.castShadow=true; site.add(base);
 const tower=new THREE.Mesh(new THREE.CylinderGeometry(3.2,3.2,110,12), new THREE.MeshStandardMaterial({color:0xcbd5e1})); tower.position.y=63; site.add(tower);
@@ -108,65 +113,81 @@ const dish=new THREE.Mesh(new THREE.SphereGeometry(16,16,12,0,Math.PI*2,0,Math.P
 const ring=new THREE.Mesh(new THREE.RingGeometry(88,90,48), new THREE.MeshBasicMaterial({color:0x38bdf8, transparent:true, opacity:.22, side:THREE.DoubleSide})); ring.rotation.x=-Math.PI/2; ring.position.y=1.2; site.add(ring);
 scene.add(site);
 
-// ——— BIG DJI DRONE (so you can actually see it) ———
-const SCALE=28; // ~10m visual, physics still 0.5m
-function makeDrone(){
+// ——— DJI MAVIC 3 — 48× visual exaggeration so you SEE it at 2km ———
+const SCALE=48; // 0.42*48≈20m span — huge but necessary for 12km world; physics still 0.5m
+function makeDJI(){
   const g=new THREE.Group();
-  // high-contrast body
-  const body=new THREE.Mesh(new THREE.BoxGeometry(0.42,0.10,0.32), new THREE.MeshStandardMaterial({color:0xf1f5f9, roughness:.35})); body.castShadow=true; g.add(body);
-  const belly=new THREE.Mesh(new THREE.BoxGeometry(0.40,0.04,0.30), new THREE.MeshStandardMaterial({color:0x0ea5e9})); belly.position.y=-0.05; g.add(belly);
-  const cam=new THREE.Mesh(new THREE.SphereGeometry(0.045,12,10), new THREE.MeshStandardMaterial({color:0x020617})); cam.position.set(0,-0.03,0.19); g.add(cam);
-  const leds=[
-    [0.20,0.04,0.15,0x22c55e],[0.20,0.04,-0.15,0x22c55e],[-0.20,0.04,0.15,0xef4444],[-0.20,0.04,-0.15,0xef4444]
-  ];
-  leds.forEach(([x,y,z,c])=>{
-    // arm
-    const arm=new THREE.Mesh(new THREE.CylinderGeometry(0.018,0.018, Math.hypot(x,z)*0.92, 8), new THREE.MeshStandardMaterial({color:0x64748b}));
-    const mx=x*0.5, mz=z*0.5; arm.position.set(mx,0,mz); arm.rotation.y=Math.atan2(x,z); arm.rotation.x=Math.PI/2; g.add(arm);
-    const motor=new THREE.Mesh(new THREE.CylinderGeometry(0.05,0.05,0.05,12), new THREE.MeshStandardMaterial({color:0x0f172a})); motor.position.set(x,0.03,z); g.add(motor);
-    const prop=new THREE.Mesh(new THREE.BoxGeometry(0.36,0.02,0.028), new THREE.MeshStandardMaterial({color:0x7dd3fc, transparent:true, opacity:.95})); prop.position.set(x,0.065,z); prop.name='prop'+x+z; g.add(prop);
-    const led=new THREE.Mesh(new THREE.SphereGeometry(0.018,8,8), new THREE.MeshStandardMaterial({color:c, emissive:c, emissiveIntensity:1.4})); led.position.set(x,0.018,z); g.add(led);
+  // high-contrast white body with dark belly — unmistakable DJI
+  const body=new THREE.Mesh(new THREE.BoxGeometry(0.42,0.10,0.32), new THREE.MeshStandardMaterial({color:0xf8fafc, roughness:.30, metalness:.12})); body.castShadow=true; g.add(body);
+  const belly=new THREE.Mesh(new THREE.BoxGeometry(0.40,0.045,0.30), new THREE.MeshStandardMaterial({color:0x0ea5e9, emissive:0x0ea5e9, emissiveIntensity:.18})); belly.position.y=-0.052; g.add(belly);
+  const armMat=new THREE.MeshStandardMaterial({color:0x64748b, roughness:.55}); const motorMat=new THREE.MeshStandardMaterial({color:0x0f172a});
+  const offs=[[0.22,0.16],[0.22,-0.16],[-0.22,0.16],[-0.22,-0.16]];
+  offs.forEach(([x,z],i)=>{
+    const arm=new THREE.Mesh(new THREE.CylinderGeometry(0.022,0.022, Math.hypot(x,z)*0.92, 10), armMat);
+    arm.position.set(x*0.5,0,z*0.5); arm.rotation.y=Math.atan2(x,z); arm.rotation.x=Math.PI/2; arm.castShadow=true; g.add(arm);
+    const motor=new THREE.Mesh(new THREE.CylinderGeometry(0.062,0.062,0.055,14), motorMat); motor.position.set(x,0.035,z); motor.castShadow=true; g.add(motor);
+    const prop=new THREE.Mesh(new THREE.BoxGeometry(0.42,0.022,0.032), new THREE.MeshStandardMaterial({color:0x7dd3fc, transparent:true, opacity:.96})); prop.position.set(x,0.072,z); prop.name='prop'+i; g.add(prop);
+    const led=new THREE.Mesh(new THREE.SphereGeometry(0.022,10,8), new THREE.MeshStandardMaterial({color:i<2?0x22c55e:0xef4444, emissive:i<2?0x22c55e:0xef4444, emissiveIntensity:1.6})); led.position.set(x,0.022,z); g.add(led);
   });
-  // scale after building at 1:1
+  const camGimbal=new THREE.Mesh(new THREE.CylinderGeometry(0.055,0.055,0.08,14), new THREE.MeshStandardMaterial({color:0x020617})); camGimbal.rotation.z=Math.PI/2; camGimbal.position.set(0,-0.03,0.19); g.add(camGimbal);
+  const lens=new THREE.Mesh(new THREE.SphereGeometry(0.048,14,10), new THREE.MeshStandardMaterial({color:0x020617, roughness:.12})); lens.position.set(0,-0.03,0.23); g.add(lens);
+  // landing gear
+  const legA=new THREE.Mesh(new THREE.BoxGeometry(0.02,0.12,0.02), new THREE.MeshStandardMaterial({color:0x334155})); legA.position.set(0.12,-0.08,0.06); g.add(legA);
+  const legB=legA.clone(); legB.position.set(-0.12,-0.08,0.06); g.add(legB);
+  // label sprite
+  const canv=document.createElement('canvas'); canv.width=420; canv.height=84; const ctx=canv.getContext('2d');
+  ctx.fillStyle='rgba(14,165,233,0.92)'; ctx.fillRect(0,0,420,84); ctx.fillStyle='#001018'; ctx.font='700 28px system-ui'; ctx.fillText('DJI MAVIC 3', 18, 36); ctx.font='600 18px system-ui'; ctx.fillText('48× VISUAL  •  0.5m PHYSICS', 18, 62);
+  const tex=new THREE.CanvasTexture(canv); const spriteMat=new THREE.SpriteMaterial({map:tex, transparent:true}); const sprite=new THREE.Sprite(spriteMat); sprite.position.set(0,0.42,0); sprite.scale.set(9,1.8,1); g.add(sprite);
   g.scale.set(SCALE,SCALE,SCALE);
   return g;
 }
-const drone=makeDrone(); scene.add(drone);
-// beacon + beam + outline + shadow — guarantees visibility at 2km
-const halo=new THREE.Mesh(new THREE.SphereGeometry(7.5,16,12), new THREE.MeshBasicMaterial({color:0x38bdf8, transparent:true, opacity:.20, depthWrite:false})); scene.add(halo);
-const beam=new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0,0,0), new THREE.Vector3(0,90,0)]), new THREE.LineBasicMaterial({color:0x38bdf8, transparent:true, opacity:.42})); scene.add(beam);
-const outline=new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.BoxGeometry(0.42*SCALE*1.2, 0.10*SCALE*1.6, 0.32*SCALE*1.3)), new THREE.LineBasicMaterial({color:0x7dd3fc, transparent:true, opacity:.95})); scene.add(outline);
-const shadow=new THREE.Mesh(new THREE.CircleGeometry(6.5,24), new THREE.MeshBasicMaterial({color:0x000000, transparent:true, opacity:.32})); shadow.rotation.x=-Math.PI/2; shadow.position.y=0.18; scene.add(shadow);
-// trail
-let trail=[]; const maxTrail=1600;
-const tGeo=new THREE.BufferGeometry(); const tMat=new THREE.LineBasicMaterial({color:0x38bdf8, transparent:true, opacity:.98});
-const trailLine=new THREE.Line(tGeo, tMat); scene.add(trailLine);
+const drone=makeDJI(); scene.add(drone);
+const halo=new THREE.Mesh(new THREE.SphereGeometry(9.5,18,14), new THREE.MeshBasicMaterial({color:0x38bdf8, transparent:true, opacity:.18, depthWrite:false})); scene.add(halo);
+const beam=new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0,0,0), new THREE.Vector3(0,110,0)]), new THREE.LineBasicMaterial({color:0x38bdf8, transparent:true, opacity:.45})); scene.add(beam);
+const outline=new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.BoxGeometry(0.42*SCALE*1.18, 0.10*SCALE*1.8, 0.32*SCALE*1.35)), new THREE.LineBasicMaterial({color:0xf8fafc, transparent:true, opacity:.92})); scene.add(outline);
+const shadow=new THREE.Mesh(new THREE.CircleGeometry(7.5,24), new THREE.MeshBasicMaterial({color:0x000000, transparent:true, opacity:.32})); shadow.rotation.x=-Math.PI/2; shadow.position.y=0.18; scene.add(shadow);
+
+// trail — thick Line2 so you SEE entire path (not just t=0)
+let trail=[]; const maxTrail=2400; // allow full 600s @10Hz = 6000 pts, cap 2400 for perf
+let line2=null; function ensureLine2(){
+  if(line2) scene.remove(line2);
+  const geom=new LineGeometry(); geom.setPositions(trail);
+  const mat=new LineMaterial({color:0x38bdf8, linewidth:7, transparent:true, opacity:.98, resolution: new THREE.Vector2(innerWidth, innerHeight)});
+  line2=new Line2(geom, mat); line2.computeLineDistances(); scene.add(line2);
+}
+function updateTrail(){
+  if(trail.length<6){ if(line2){ scene.remove(line2); line2=null; } document.getElementById('trailN').textContent='0'; return; }
+  if(!line2){ ensureLine2(); } else { line2.geometry.setPositions(trail); line2.computeLineDistances(); line2.material.resolution.set(innerWidth, innerHeight); }
+  document.getElementById('trailN').textContent=String(trail.length/3);
+  // also thin Line fallback for fog
+}
 const detG=new THREE.Group(); scene.add(detG);
 function setDets(list){
   detG.clear();
   list.forEach(d=>{
     if(d.r==null||!isFinite(d.r)||d.r>8000) return;
     const enu=sphToEnu(d.az,d.el,d.r); const p=to3(enu);
-    const mat=new THREE.MeshStandardMaterial({color: d.clutter?0xf59e0b:0x22c55e, emissive: d.clutter?0xf59e0b:0x22c55e, emissiveIntensity:.8, transparent:true, opacity:.94});
-    const m=new THREE.Mesh(new THREE.SphereGeometry(d.clutter?3.4:4.2,10,8), mat); m.position.copy(p); detG.add(m);
+    const mat=new THREE.MeshStandardMaterial({color: d.clutter?0xf59e0b:0x22c55e, emissive: d.clutter?0xf59e0b:0x22c55e, emissiveIntensity:.85, transparent:true, opacity:.94});
+    const m=new THREE.Mesh(new THREE.SphereGeometry(d.clutter?3.8:4.8,10,8), mat); m.position.copy(p); detG.add(m);
   });
 }
 
-// API
-let state=null, mode='auto20', dur=20, paused=false, keys={}, joy={x:0,y:0,active:false}, launched=false;
-const modeDur={auto20:20, auto40:40, manual:300}; // manual 5min max, but truncated only if you stop; server 600 max
+// state
+let state=null, mode='auto20', dur=20, paused=false, keys={}, joy={x:0,y:0,active:false}, launched=false, follow=true;
+const modeDur={auto20:20, auto40:40, manual:600};
 async function api(path, body){
-  const r=await fetch(path,{method:body?'POST':'GET', headers:{'Content-Type':'application/json'}, body:body?JSON.stringify(body):undefined});
+  const r=await fetch(path,{method:body?'POST':'GET', headers:{'Content-Type':'application/json'}, body: body?JSON.stringify(body):undefined});
   if(!r.ok) throw new Error(await r.text());
   return r.json();
 }
-function showMsg(t, ms=2400){ const el=document.getElementById('msg'); el.textContent=t; el.style.display='block'; if(ms) setTimeout(()=> el.style.display='none', ms); }
+function showMsg(t, ms=2600){ const el=document.getElementById('msg'); el.textContent=t; el.style.display='block'; if(ms) setTimeout(()=> el.style.display='none', ms); }
 function setMode(m){
-  mode=m;
+  mode=m; dur=modeDur[m];
   document.querySelectorAll('#a20,#a40,#man').forEach(b=> b.classList.remove('on'));
-  const id=m==='auto20'?'a20':m==='auto40'?'a40':'man'; document.getElementById(id).classList.add('on');
-  dur=modeDur[m]; document.getElementById('dur').textContent = m==='manual' ? '∞' : dur+'s'; document.getElementById('t1').textContent = m==='manual' ? '∞' : dur.toFixed(1)+'s';
-  document.getElementById('mode').textContent = m==='auto20'?'Auto 20s':m==='auto40'?'Auto 40s':'Manual';
+  document.getElementById(m==='auto20'?'a20':m==='auto40'?'a40':'man').classList.add('on');
+  document.getElementById('dur').textContent = m==='manual' ? '∞ (600s max)' : dur+'s';
+  document.getElementById('t1').textContent = m==='manual' ? '∞' : dur.toFixed(1)+'s';
+  document.getElementById('mode').textContent = m==='auto20'?'Auto 20s':m==='auto40'?'Auto 40s':'Manual ∞';
 }
 setMode('auto20');
 document.getElementById('a20').onclick=()=> setMode('auto20');
@@ -175,53 +196,61 @@ document.getElementById('man').onclick=()=> setMode('manual');
 document.getElementById('go').onclick=()=> launch();
 document.getElementById('reset').onclick=()=> reset();
 document.getElementById('pause').onclick=e=>{ paused=!paused; e.target.textContent=paused?'Resume':'Pause'; };
-function updateBar(){
-  const cur=state?state.gt.t:0;
-  const pct = mode==='manual' ? Math.min(100, cur/60*100) : Math.min(100, cur/dur*100);
-  document.getElementById('fill').style.width=pct+'%';
-}
+document.getElementById('follow').onclick=e=>{ follow=!follow; e.target.textContent=follow?'Follow: ON':'Follow: OFF'; e.target.classList.toggle('on', follow); };
+document.getElementById('recenter').onclick=()=>{
+  if(state){ const p=to3(state.gt.pos); controls.target.copy(p); camera.position.set(p.x+360,p.y+280,p.z-620); canvas.focus(); }
+};
+document.getElementById('clear').onclick=()=>{ trail=[]; updateTrail(); window._tot=0; document.getElementById('tot').textContent='0'; };
+
 async function reset(){
   const autopilot = mode!=='manual';
   const d = mode==='manual' ? 600 : dur;
   try{
     const res=await api('/api/reset',{scenario:'approach', duration_s:d, autopilot, seed: Math.floor(Math.random()*1e9)});
-    state=res; launched=true; trail=[]; updateTrail();
-    document.getElementById('t').textContent='0.0s';
-    document.getElementById('steps').textContent='1'; document.getElementById('tot').textContent='0';
+    state=res; launched=true; trail=[]; updateTrail(); window._tot=0;
+    document.getElementById('t').textContent='0.0s'; document.getElementById('steps').textContent='1'; document.getElementById('tot').textContent='0';
     document.getElementById('cR').textContent='0';document.getElementById('cE').textContent='0';document.getElementById('cF').textContent='0';
-    apply(res); showMsg(autopilot?'Auto launched — watch it fly (20/40s)':'Manual launched — use WASD/QE + joystick', 2800);
-    const p=to3(res.gt.pos); controls.target.copy(p); camera.position.set(p.x+320,p.y+240,p.z-560);
-  }catch(e){ console.error(e); document.getElementById('live').textContent='● offline'; }
+    apply(res);
+    const p=to3(res.gt.pos); controls.target.copy(p); camera.position.set(p.x+360,p.y+280,p.z-620);
+    canvas.focus(); showMsg(autopilot?`Auto ${d}s launched — full path will grow`:`Manual launched — CLICK CANVAS then WASD/QE to fly (as long as you want)`, 3000);
+  }catch(e){ console.error(e); document.getElementById('live').textContent='● offline'; showMsg('Server offline — is it on :8000?', 3000); }
 }
 async function launch(){ await reset(); }
+
 function apply(res){
-  const p3=to3(res.gt.pos); drone.position.copy(p3); shadow.position.set(p3.x,0.18,p3.z); halo.position.copy(p3); beam.position.copy(p3); outline.position.copy(p3); outline.rotation.copy(drone.rotation);
+  const p3=to3(res.gt.pos);
+  drone.position.copy(p3); shadow.position.set(p3.x,0.18,p3.z); halo.position.copy(p3); beam.position.copy(p3); outline.position.copy(p3); outline.rotation.copy(drone.rotation);
   const v=res.gt.vel; if(v[0]||v[1]) drone.rotation.y=Math.atan2(v[0],v[1]);
-  drone.children.forEach(c=>{ if(c.name&&c.name.startsWith('prop')) c.rotation.y+=0.72; });
-  trail.push(p3.x,p3.y,p3.z); if(trail.length>maxTrail*3) trail.splice(0,3); updateTrail();
-  halo.scale.setScalar(1+0.18*Math.sin(performance.now()*0.006));
-  // follow
-  controls.target.lerp(p3, 0.09);
+  drone.children.forEach(c=>{ if(c.name&&c.name.startsWith('prop')) c.rotation.y+=0.78; });
+  // append to trail — this is ENTIRE path, not just t=0
+  trail.push(p3.x,p3.y,p3.z); if(trail.length>maxTrail*3) trail.splice(0,3);
+  updateTrail();
+  // halo pulse
+  halo.scale.setScalar(1+0.20*Math.sin(performance.now()*0.006));
+  if(follow) controls.target.lerp(p3, 0.095);
   const dets=[]; for(const k of ['radar','eo','rf']) for(const r of (res.obs[k]?.dets||[])) dets.push({az:r[0],el:r[1],r:r[2],clutter:r[3]>0.5});
   setDets(dets);
   document.getElementById('t').textContent=res.gt.t.toFixed(1)+'s';
   document.getElementById('range').textContent=(res.gt.range_m/1000).toFixed(2)+'km';
   document.getElementById('ndets').textContent=dets.length; document.getElementById('r').textContent=res.obs.radar?.n||0; document.getElementById('e').textContent=res.obs.eo?.n||0; document.getElementById('f').textContent=res.obs.rf?.n||0;
-  document.getElementById('cR').textContent=res.obs.radar?.n||0; document.getElementById('cE').textContent=res.obs.eo?.n||0; document.getElementById('cF').textContent=res.obs.rf?.n||0;
+  document.getElementById('cR').textContent=res.obs.radar?.n||0;document.getElementById('cE').textContent=res.obs.eo?.n||0;document.getElementById('cF').textContent=res.obs.rf?.n||0;
   if(res.recording_len!=null) document.getElementById('steps').textContent=res.recording_len;
-  // total dets
-  let tot=0; for(const k of ['radar','eo','rf']) tot+=res.obs[k]?.n||0; const curT=parseInt(document.getElementById('tot').textContent)||0; // keep running total via server recording_len is steps, not dets; we sum dets per tick naive
-  // use recording_len * avg? just increment
-  // better: keep own counter
-  window._tot = (window._tot||0)+tot; document.getElementById('tot').textContent=window._tot;
-  // obs text
+  window._tot=(window._tot||0)+dets.length; document.getElementById('tot').textContent=window._tot;
+  // progress bar — for manual use elapsed / 60 as visual, for auto exact
+  const pct = mode==='manual' ? Math.min(100, res.gt.t/60*100) : Math.min(100, res.gt.t/dur*100);
+  document.getElementById('fill').style.width=pct.toFixed(1)+'%'; document.getElementById('pct').textContent=pct.toFixed(0)+'%';
   let txt=''; for(const k of ['radar','eo','rf']){ const o=res.obs[k]; txt+=k.toUpperCase().padEnd(6)+(o.n?` ${o.n} dets\n`:' --\n'); for(let i=0;i<Math.min(o.n,2);i++){ const r=o.dets[i]; const az=r[0]!=null?r[0].toFixed(1):'--', el=r[1]!=null?r[1].toFixed(1):'--', rr=r[2]!=null?(r[2]/1000).toFixed(2)+'km':'--'; const confs=r.slice(7,11).filter(v=>v!=null); const mx=Math.max(...confs); txt+=`  az ${az} el ${el} r ${rr} conf ${mx.toFixed(2)}${r[3]>0.5?' [clutter]':''}\n`; } }
   document.getElementById('obs').textContent=txt;
-  updateBar();
+  document.getElementById('live').textContent='● live'; document.getElementById('live').style.color='#bbf7d0';
+  document.getElementById('t0').textContent=res.gt.t.toFixed(1)+'s';
 }
-function updateTrail(){ if(trail.length<6){ tGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array([]),3)); return; } tGeo.setAttribute('position', new THREE.Float32BufferAttribute(new Float32Array(trail),3)); tGeo.computeBoundingSphere(); }
-// keys + joy
-window.addEventListener('keydown',e=>{ const k=e.key.toLowerCase(); keys[k]=true; if(k===' ') e.preventDefault(); });
+
+// focus hint
+canvas.addEventListener('click',()=> canvas.focus());
+window.addEventListener('keydown',e=>{
+  // ensure canvas focused for WASD
+  const k=e.key.toLowerCase(); keys[k]=true; if(['w','a','s','d','q','e',' '].includes(k)) e.preventDefault(); if(k==='r') reset(); if(k==='p') document.getElementById('pause').click();
+});
 window.addEventListener('keyup',e=> keys[e.key.toLowerCase()]=false);
 const joyEl=document.getElementById('joy'), stick=document.getElementById('stick');
 function jpos(ev){ const r=joyEl.getBoundingClientRect(); const t=ev.touches?ev.touches[0]:ev; let x=(t.clientX-(r.left+r.width/2))/(r.width/2), y=(t.clientY-(r.top+r.height/2))/(r.height/2); const l=Math.hypot(x,y); if(l>1){x/=l; y/=l} return {x,y}; }
@@ -229,56 +258,53 @@ joyEl.addEventListener('pointerdown',e=>{ joy.active=true; joyEl.setPointerCaptu
 joyEl.addEventListener('pointermove',e=>{ if(!joy.active) return; const p=jpos(e); joy.x=p.x; joy.y=-p.y; stick.style.transform=`translate(${joy.x*52}px,${-joy.y*52}px)`; });
 const jend=()=>{ joy.active=false; joy.x=0; joy.y=0; stick.style.transform='translate(0,0)'; };
 joyEl.addEventListener('pointerup',jend); joyEl.addEventListener('pointercancel',jend);
-// exports
 async function doExp(fmt){
-  try{
-    const r=await fetch('/api/export',{method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({format:fmt})});
-    const blob=await r.blob(); const url=URL.createObjectURL(blob);
-    const a=document.createElement('a'); a.href=url; const cd=r.headers.get('Content-Disposition'); const m=cd&&cd.match(/filename=\"?([^\"]+)\"?/); a.download=m?m[1]:`skygym.${fmt==='jsonl'?'jsonl':'csv'}`; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url); showMsg('Exported '+a.download, 2200);
+  try{ const r=await fetch('/api/export',{method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({format:fmt})});
+    const blob=await r.blob(); const url=URL.createObjectURL(blob); const a=document.createElement('a'); a.href=url; const cd=r.headers.get('Content-Disposition'); const m=cd&&cd.match(/filename=\"?([^\"]+)\"?/); a.download=m?m[1]:`skygym.${fmt==='jsonl'?'jsonl':'csv'}`; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url); showMsg('Exported '+a.download, 2200);
   }catch(e){ alert(e.message); }
 }
 document.getElementById('expJ').onclick=()=> doExp('jsonl');
 document.getElementById('expC').onclick=()=> doExp('csv');
 
-// main tick 10Hz
+// tick 10Hz — drives entire path, not just t=0
 async function tick(){
   if(!launched || paused || !state) return;
   let action=null;
   const isAuto = mode!=='manual';
   if(isAuto){
-    action=null; // let Python autopilot fly (approach)
+    action=null; // Python autopilot (approach) flies
   } else {
     let ax=0,ay=0,az=0;
-    if(keys['w']) ay+=2.6; if(keys['s']) ay-=2.6; if(keys['d']) ax+=2.6; if(keys['a']) ax-=2.6; if(keys['e']) az+=2.6; if(keys['q']) az-=2.6;
-    ax+=joy.x*3.2; ay+=joy.y*3.2;
+    if(keys['w']) ay+=3.6; if(keys['s']) ay-=3.6; if(keys['d']) ax+=3.6; if(keys['a']) ax-=3.6; if(keys['e']) az+=3.6; if(keys['q']) az-=3.6;
+    ax+=joy.x*4.0; ay+=joy.y*4.0;
+    // debug: show keys active
     if(ax||ay||az) action=[ax,ay,az];
-    else { const v=state.gt.vel; const n=Math.hypot(v[0],v[1],v[2]); action= n>0.25? [-v[0]*1.0,-v[1]*1.0,-v[2]*1.0] : [0,0,0]; }
+    else { const v=state.gt.vel; const n=Math.hypot(v[0],v[1],v[2]); action= n>0.25? [-v[0]*1.15, -v[1]*1.15, -v[2]*1.15] : [0,0,0]; }
   }
   try{
     const res=await api('/api/step',{action}); state=res; apply(res);
     if(res.terminated||res.truncated){
-      const label=mode==='manual'?'Manual flight ended — Export your data':'Auto '+dur+'s done — Export your data';
-      showMsg(label, 3200);
-      // don't auto-reset manual; auto modes auto-reset after pause
-      if(mode!=='manual') setTimeout(()=> reset(), 1400);
+      showMsg(mode==='manual'?'Manual ended — Export JSONL/CSV':`Auto ${dur}s complete — full path ${trail.length/3} pts — Export now`, 3400);
+      if(mode!=='manual') setTimeout(()=> reset(), 1500);
     }
-  }catch(e){ console.error(e); document.getElementById('live').textContent='● error'; }
+  }catch(e){ console.error(e); document.getElementById('live').textContent='● error'; document.getElementById('live').style.color='#fecaca'; }
 }
 setInterval(tick, 100);
 
-// render 60fps
-let last=performance.now(), frames=0;
+let last=performance.now(),frames=0;
 function anim(){
   requestAnimationFrame(anim);
   controls.update();
   const w=innerWidth,h=innerHeight;
-  if(canvas.width!==w*devicePixelRatio || canvas.height!==h*devicePixelRatio){ renderer.setSize(w,h,false); camera.aspect=w/h; camera.updateProjectionMatrix(); }
+  if(canvas.width!==w*devicePixelRatio || canvas.height!==h*devicePixelRatio){ renderer.setSize(w,h,false); camera.aspect=w/h; camera.updateProjectionMatrix(); if(line2) line2.material.resolution.set(w,h); }
   renderer.render(scene,camera);
   frames++; const now=performance.now(); if(now-last>1000){ document.getElementById('fps').textContent=Math.round(frames*1000/(now-last)); frames=0; last=now; }
 }
 anim();
-window.addEventListener('resize',()=>{ renderer.setSize(innerWidth,innerHeight,false); camera.aspect=innerWidth/innerHeight; camera.updateProjectionMatrix(); });
-showMsg('Pick Auto 20s / 40s or Manual ∞ then click Launch', 3600);
+window.addEventListener('resize',()=>{ renderer.setSize(innerWidth,innerHeight,false); camera.aspect=innerWidth/innerHeight; camera.updateProjectionMatrix(); if(line2) line2.material.resolution.set(innerWidth, innerHeight); });
+showMsg('Pick Auto 20s / 40s or Manual ∞ then click Launch — DJI is 48× scaled so you can see it', 4000);
+// auto-launch for quick visual check (can be dismissed)
+setTimeout(()=>{ if(!launched) showMsg('Click Launch to start — trail will grow for entire path, not just t=0', 3000); }, 600);
 </script>
 </body>
 </html>
