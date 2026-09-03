@@ -3,526 +3,756 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>SkyGym — 3D Playground v2</title>
+<title>SkyGym — 3D Playground v3</title>
 <script async src="https://unpkg.com/es-module-shims@1.8.0/dist/es-module-shims.js"></script>
 <script type="importmap">{"imports":{"three":"https://unpkg.com/three@0.160.0/build/three.module.js","three/addons/":"https://unpkg.com/three@0.160.0/examples/jsm/"}}</script>
 <style>
   *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%}
   body{font-family:system-ui,sans-serif;background:#070b14;color:#e6e8ec;overflow:hidden}
-  #c{position:fixed;inset:0;width:100vw;height:100vh;display:block}
+  #c{position:fixed;inset:0;width:100vw;height:100vh;display:block;outline:none}
+  #labels{position:fixed;inset:0;pointer-events:none;z-index:2;overflow:hidden}
+  .dlabel{position:absolute;transform:translate(-50%,-135%);background:rgba(7,12,22,.82);
+    border:1px solid #263554;border-radius:8px;padding:3px 8px;font-size:11px;
+    font-family:ui-monospace,monospace;white-space:nowrap;display:none}
+  .dlabel b{font-size:12px}
+  .dlabel .rg{color:#94a3b8}
+  .dlabel.you{border-color:#4ade80}
+  .dlabel.you b::after{content:" · YOU";color:#4ade80;font-size:9px}
+  .dlabel.edge{background:rgba(245,158,11,.92);color:#0b1220;border-color:#fbbf24;font-weight:800}
   #top{position:fixed;top:10px;left:10px;right:10px;display:flex;gap:8px;flex-wrap:wrap;z-index:2}
   .pill{background:#0f172a;border:1px solid #263554;border-radius:999px;padding:6px 12px;font-size:12px}
   .pill b{color:#7dd3fc}
-  #box{position:fixed;right:12px;top:46px;width:372px;background:rgba(10,16,28,.97);border:1px solid #1e2e45;border-radius:14px;padding:14px;z-index:3;max-height:calc(100vh - 60px);overflow:auto}
+  #box{position:fixed;right:12px;top:46px;width:368px;background:rgba(10,16,28,.97);
+    border:1px solid #1e2e45;border-radius:14px;padding:14px;z-index:3;
+    max-height:calc(100vh - 60px);overflow:auto}
   #box h3{font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:#94a3b8;margin:10px 0 6px}
   #box h3:first-child{margin:0 0 8px}
   .row{display:flex;gap:8px;margin:6px 0}
-  button{flex:1;background:#0f172a;color:#e2e8f0;border:1px solid #2a3a56;border-radius:10px;padding:9px;font-size:13px;cursor:pointer}
+  button{flex:1;background:#0f172a;color:#e2e8f0;border:1px solid #2a3a56;border-radius:10px;
+    padding:9px;font-size:13px;cursor:pointer}
   button:hover{border-color:#38bdf8}
   button.on{background:#0ea5e9;color:#001018;border-color:#38bdf8;font-weight:800}
   button.primary{background:#22c55e;color:#001018;border-color:#4ade80;font-weight:800}
+  button.small{padding:6px;font-size:12px}
   button:disabled{opacity:.4;cursor:not-allowed}
-  .bar{height:12px;background:#0b1220;border:1px solid #1e2e45;border-radius:999px;overflow:hidden}
-  .fill{height:100%;width:0%;background:linear-gradient(90deg,#0ea5e9,#22c55e);transition:width .12s}
-  .mono{font-family:ui-monospace,monospace;font-size:11px;white-space:pre-wrap;background:#0b1220;border:1px solid #1e2e45;border-radius:10px;padding:8px;max-height:130px;overflow:auto}
-  .help{font-size:11px;color:#94a3b8;line-height:1.45}
+  .mono{font-family:ui-monospace,monospace;font-size:11px;white-space:pre-wrap;background:#0b1220;
+    border:1px solid #1e2e45;border-radius:10px;padding:8px;max-height:130px;overflow:auto}
+  .help{font-size:11px;color:#94a3b8;line-height:1.5}
+  .help b{color:#cbd5e1}
   #fleet{width:100%;border-collapse:collapse;font-size:11px;font-family:ui-monospace,monospace}
   #fleet td,#fleet th{padding:3px 5px;text-align:left;border-bottom:1px solid #14213a}
   #fleet th{color:#94a3b8;font-weight:600;font-size:9px;letter-spacing:.08em}
   .dot{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:4px;vertical-align:-1px}
-  #ppi{position:fixed;left:14px;bottom:14px;width:300px;height:300px;border-radius:50%;background:rgba(4,10,18,.88);border:1px solid #1c3a5e;z-index:3}
-  #ppileg{position:fixed;left:22px;bottom:322px;z-index:3;font-size:10px;color:#94a3b8;background:rgba(4,10,18,.75);border:1px solid #1c3a5e;border-radius:8px;padding:4px 8px}
-  #joy{position:fixed;left:340px;bottom:24px;width:130px;height:130px;background:rgba(15,23,42,.46);border:1px solid #263554;border-radius:50%;z-index:3;touch-action:none}
-  #stick{position:absolute;left:50%;top:50%;width:50px;height:50px;margin:-25px 0 0 -25px;background:radial-gradient(circle at 30% 30%,#7dd3fc,#0ea5e9);border-radius:50%}
-  #msg{position:fixed;left:50%;top:44%;transform:translate(-50%,-50%);background:#0f172a;border:1px solid #38bdf8;color:#e0f2fe;padding:14px 18px;border-radius:12px;font-size:13px;display:none;z-index:4;max-width:560px;text-align:center}
-  #focusHint{position:fixed;left:50%;bottom:10px;transform:translateX(-50%);background:rgba(15,23,42,.85);border:1px solid #263554;border-radius:999px;padding:6px 12px;font-size:11px;z-index:3}
+  #ppi{position:fixed;left:14px;bottom:14px;width:320px;height:320px;border-radius:50%;
+    background:rgba(4,10,18,.88);border:1px solid #1c3a5e;z-index:3}
+  #ppileg{position:fixed;left:24px;bottom:342px;z-index:3;font-size:10px;color:#94a3b8;
+    background:rgba(4,10,18,.75);border:1px solid #1c3a5e;border-radius:8px;padding:4px 8px}
+  #joy{position:fixed;left:360px;bottom:24px;width:130px;height:130px;background:rgba(15,23,42,.46);
+    border:1px solid #263554;border-radius:50%;z-index:3;touch-action:none}
+  #stick{position:absolute;left:50%;top:50%;width:50px;height:50px;margin:-25px 0 0 -25px;
+    background:radial-gradient(circle at 30% 30%,#7dd3fc,#0ea5e9);border-radius:50%}
+  #msg{position:fixed;left:50%;top:42%;transform:translate(-50%,-50%);background:#0f172a;
+    border:1px solid #38bdf8;color:#e0f2fe;padding:14px 18px;border-radius:12px;font-size:13px;
+    display:none;z-index:4;max-width:560px;text-align:center}
+  #hint{position:fixed;left:50%;bottom:10px;transform:translateX(-50%);background:rgba(15,23,42,.85);
+    border:1px solid #263554;border-radius:999px;padding:6px 14px;font-size:11px;z-index:3;color:#94a3b8}
+  #hint b{color:#7dd3fc}
+  #banner{position:fixed;inset:0;background:#070b14f2;z-index:9;display:none;
+    align-items:center;justify-content:center;text-align:center;padding:24px}
+  #banner .in{max-width:640px;border:1px solid #f59e0b;border-radius:16px;padding:28px;background:#0f172a}
+  #banner h2{color:#fbbf24;margin-bottom:12px;font-size:18px}
+  #banner code{background:#0b1220;border:1px solid #263554;border-radius:8px;padding:8px 12px;
+    display:inline-block;margin:10px 0;font-family:ui-monospace,monospace;color:#7dd3fc;font-size:13px}
+  #banner p{color:#94a3b8;font-size:13px;line-height:1.6}
+  @media (max-width:900px){#box{width:300px}#ppi{width:220px;height:220px}#joy{display:none}}
 </style>
 </head>
 <body>
 <canvas id="c" tabindex="0"></canvas>
-<div id="msg"></div>
+<div id="labels"></div>
+
 <div id="top">
-  <div class="pill">SkyGym <b>3D Playground v2</b> · <code>env.py / multidrone.py</code></div>
-  <div class="pill"><span id="mode">—</span> · t <b id="t">0.0s</b> / <b id="dur">—</b> <span id="live" style="color:#bbf7d0">● live</span> FPS <b id="fps">—</b></div>
-  <div class="pill">Cam <b id="cam">Orbit</b> (C)</div>
+  <div class="pill">SkyGym <b>3D Playground v3</b></div>
+  <div class="pill"><span id="mode">booting…</span> · t <b id="t">0.0s</b> / <b id="dur">—</b> <span id="live" style="color:#bbf7d0">●</span> FPS <b id="fps">—</b></div>
+  <div class="pill">Cam <b id="cam">Chase</b> (C)</div>
   <div class="pill">Dets <b id="ndets">0</b> (R<span id="r">0</span>/E<span id="e">0</span>/F<span id="f">0</span>)</div>
+  <div class="pill">Ep <b id="ep">1</b> · seed <b id="seedp">—</b></div>
 </div>
+
 <div id="box">
-  <h3>Pick a mode, then Launch</h3>
+  <h3>Modes</h3>
   <div class="row">
-    <button id="a20" class="on">Auto 20s</button>
-    <button id="a40">Auto 40s</button>
-    <button id="swm">Swarm 20s</button>
-    <button id="man">Manual ∞</button>
+    <button id="m-swm" class="primary">Swarm (autopilot)</button>
+    <button id="m-solo">Solo auto</button>
+    <button id="m-fly">Fly it</button>
   </div>
-  <div class="row" id="nrow" style="display:none">
-    <span style="font-size:11px;color:#94a3b8;align-self:center">drones:</span>
-    <button class="non" data-n="2">2</button><button class="non" data-n="3">3</button><button class="non" data-n="4">4</button>
+  <div class="row" id="nrow">
+    <span style="font-size:11px;color:#94a3b8;align-self:center">drones</span>
+    <button class="non small" data-n="2">2</button>
+    <button class="non small on" data-n="3">3</button>
+    <button class="non small" data-n="4">4</button>
   </div>
   <div class="row">
-    <button id="go" class="primary">▶ Launch</button>
-    <button id="pause">Pause</button>
-    <button id="reset">Reset</button>
+    <button id="restart" class="small">↻ Restart</button>
+    <button id="pause" class="small">⏸ Pause (Space)</button>
+    <button id="loopb" class="small on">⟳ Auto-loop</button>
   </div>
-  <div class="bar" style="margin:8px 0 4px"><div id="fill" class="fill"></div></div>
-  <div style="display:flex;justify-content:space-between;font-size:11px;color:#94a3b8"><span id="t0">0.0s</span><span id="t1">20.0s</span><span id="pct">0%</span></div>
-
-  <h3>Fleet — witness channel (hidden from sensors)</h3>
-  <table id="fleet"><thead><tr><th></th><th>DRONE</th><th>BEHAVIOUR</th><th>RANGE</th><th>AZ</th><th>ALT</th></tr></thead><tbody id="fleetB"></tbody></table>
-
-  <h3>Sensors live as it flies</h3>
-  <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;font-size:11px">
-    <div style="background:#0b1220;border:1px solid #1e2e45;border-radius:10px;padding:7px"><span style="color:#94a3b8;font-size:9px">RADAR 10Hz az/el/r</span><br><b id="cR">0</b> dets</div>
-    <div style="background:#0b1220;border:1px solid #1e2e45;border-radius:10px;padding:7px"><span style="color:#94a3b8;font-size:9px">EO 30Hz az/el</span><br><b id="cE">0</b> dets</div>
-    <div style="background:#0b1220;border:1px solid #1e2e45;border-radius:10px;padding:7px"><span style="color:#94a3b8;font-size:9px">RF 5Hz az-only</span><br><b id="cF">0</b> dets</div>
-  </div>
-  <div class="row"><button id="expJ">Export JSONL</button><button id="expC">Export CSV</button></div>
-  <div style="font-size:11px;color:#94a3b8">Steps <b id="steps" style="color:#e2e8f0">0</b> · Total dets <b id="tot" style="color:#e2e8f0">0</b></div>
-
-  <h3>View</h3>
   <div class="row">
-    <button id="vol">Volumes: ON</button>
-    <button id="scale">Scale: 40×</button>
-    <button id="camB">Cam: Orbit</button>
+    <button id="scale" class="small">Scale: 40×</button>
+    <button id="volumes" class="small">Volumes (G)</button>
+    <button id="ppib" class="small on">PPI (P)</button>
   </div>
-  <div class="help"><b>Keys:</b> <b>C</b> camera (Orbit→Chase→Tower→Top) · <b>G</b> sensor volumes · <b>P</b> PPI scope · <b>Space</b> pause.
-  <b>Manual:</b> hold <b>W/S</b> north/south · <b>A/D</b> west/east · <b>Q/E</b> down/up · joystick too. Manual flies drone 1 only.</div>
-  <h3>Obs (sensor reports — the lies)</h3>
-  <div id="obs" class="mono">Press Launch. 3D = truth · PPI (bottom-left) = what the sensors actually see.</div>
+  <h3>Export (current episode)</h3>
+  <div class="row">
+    <button id="excsv" class="small">⬇ CSV</button>
+    <button id="exjsonl" class="small">⬇ JSONL</button>
+  </div>
+  <h3>Fleet witness (truth — not what sensors see)</h3>
+  <table id="fleet">
+    <thead><tr><th></th><th>DRONE</th><th>BEHAVIOUR</th><th>RANGE</th><th>AZ</th><th>ALT</th><th>TX</th></tr></thead>
+    <tbody id="fleetb"></tbody>
+  </table>
+  <h3>Reading the two layers</h3>
+  <div class="help">
+    <b>3D scene = truth</b> (the witness channel): drones, trails, sensor
+    volumes at real ranges. <b>PPI scope = measurements</b> (what the sensors
+    actually report): green radar hits, amber clutter, cyan EO, fuchsia RF rim
+    arcs (RF never gives range), dashed ghosts = truth. The gap between the
+    two layers is the entire research problem.
+  </div>
+  <h3>Keys</h3>
+  <div class="help">
+    <b>Click canvas</b> take the stick (drone 1; fleet keeps flying) ·
+    <b>WASD</b> north/south/east/west · <b>Q/E</b> down/up · <b>C</b> camera ·
+    <b>G</b> volumes · <b>P</b> PPI · <b>T</b> scale · <b>Space</b> pause
+  </div>
 </div>
-<canvas id="ppi" width="600" height="600"></canvas>
-<div id="ppileg">PPI north-up · rings 2 km · <span style="color:#4ade80">■ target det</span> <span style="color:#fbbf24">■ clutter</span> <span style="color:#fb923c">▌RF bearing</span> <span style="color:#22d3ee">◌ truth</span></div>
+
+<canvas id="ppi" width="640" height="640"></canvas>
+<div id="ppileg">PPI · what the sensors see · green radar · amber clutter · cyan EO · fuchsia RF rim · dashed cyan truth</div>
 <div id="joy"><div id="stick"></div></div>
-<div id="focusHint">Click canvas to enable <b>WASD</b> manual control</div>
+<div id="msg"></div>
+<div id="hint"><b>Click the canvas</b> to fly drone 1 · <b>C</b> camera · <b>G</b> volumes · <b>P</b> PPI · <b>Space</b> pause</div>
+<div id="banner"><div class="in">
+  <h2>⚠ The playground needs its Python server</h2>
+  <p>You (most likely) opened <code>playground_3d.html</code> directly from disk —
+     the page is only the display; the drones, sensors and physics live in Python.</p>
+  <code>python examples/playground_3d.py</code>
+  <p>then open <code>http://localhost:8000/examples/playground_3d.html</code><br>
+     (the command above also opens it for you automatically).</p>
+</div></div>
 
 <script type="module">
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-import { Line2 } from 'three/addons/lines/Line2.js';
-import { LineMaterial } from 'three/addons/lines/LineMaterial.js';
-import { LineGeometry } from 'three/addons/lines/LineGeometry.js';
 
-// ENU [E,N,U] -> three [x=E, y=U, z=N]
-const to3 = p => new THREE.Vector3(p[0], p[2], p[1]);
-const sphToEnu=(az,el,r)=>{ const a=az*Math.PI/180,e=el*Math.PI/180; return [r*Math.cos(e)*Math.sin(a), r*Math.cos(e)*Math.cos(a), r*Math.sin(e)]; };
-const FLEET_COLORS=[0x38bdf8,0xf59e0b,0xe879f9,0xa3e635];
-const FLEET_HEX=['#38bdf8','#f59e0b','#e879f9','#a3e635'];
+/* ============================================================ constants */
+const DCOL   = [0x38bdf8, 0xf472b6, 0xa3e635, 0xfbbf24];       // per-drone
+const DCSS   = ['#38bdf8', '#f472b6', '#a3e635', '#fbbf24'];
+const C_RADAR = 0x22c55e, C_EO = 0x22d3ee, C_CLUTTER = 0xf59e0b;
+const STEP_MS = 100, MAXD = 4, BASE_SEED = 20260902;
+const ACC_MAX = 4.0;                                            // m/s^2, must match FlightCfg
 
-const canvas=document.getElementById('c');
-const renderer=new THREE.WebGLRenderer({canvas,antialias:true,logarithmicDepthBuffer:true});
-renderer.setPixelRatio(Math.min(devicePixelRatio,2));
-const scene=new THREE.Scene(); scene.background=new THREE.Color(0x070b14);
-scene.fog=new THREE.Fog(0x070b14, 4000, 12000);
-const camera=new THREE.PerspectiveCamera(60, innerWidth/innerHeight, 0.1, 30000);
-camera.position.set(700,500,-1500); camera.up.set(0,1,0);
-const controls=new OrbitControls(camera, renderer.domElement);
-controls.enableDamping=true; controls.dampingFactor=0.08; controls.target.set(0,80,0);
-controls.minDistance=12; controls.maxDistance=12000;
-canvas.focus();
-
-scene.add(new THREE.HemisphereLight(0x8ec8ff, 0x070b14, 1.15));
-const sun=new THREE.DirectionalLight(0xffffff,1.1); sun.position.set(900,1100,600); scene.add(sun);
-
-// ground + grid
-const ground=new THREE.Mesh(new THREE.PlaneGeometry(20000,20000), new THREE.MeshStandardMaterial({color:0x0d1b30, roughness:.95}));
-ground.rotation.x=-Math.PI/2; scene.add(ground);
-const grid=new THREE.GridHelper(16000,64,0x1f3a5e,0x122a44); grid.position.y=0.2; scene.add(grid);
-// range reference rings 1-5 km (north-up honest distances)
-for(const km of [1,2,3,4,5]){
-  const rr=new THREE.Mesh(new THREE.RingGeometry(km*1000-1.5,km*1000,128), new THREE.MeshBasicMaterial({color:km===5?0x24507e:0x16335a, transparent:true, opacity:.5, side:THREE.DoubleSide}));
-  rr.rotation.x=-Math.PI/2; rr.position.y=0.5; scene.add(rr);
+/* ENU -> three.js (x=E, y=U, z=-N); az from North, clockwise */
+function azelDir(azDeg, elDeg, out) {
+  const a = azDeg * Math.PI / 180, e = elDeg * Math.PI / 180, ce = Math.cos(e);
+  out.set(Math.sin(a) * ce, Math.sin(e), -Math.cos(a) * ce);
+  return out;
 }
-// sensor site
-const site=new THREE.Group();
-const base=new THREE.Mesh(new THREE.CylinderGeometry(24,26,14,20), new THREE.MeshStandardMaterial({color:0x0ea5e9})); base.position.y=7; site.add(base);
-const tower=new THREE.Mesh(new THREE.CylinderGeometry(2.6,2.6,100,10), new THREE.MeshStandardMaterial({color:0xcbd5e1})); tower.position.y=57; site.add(tower);
-const dish=new THREE.Mesh(new THREE.SphereGeometry(14,16,12,0,Math.PI*2,0,Math.PI/2), new THREE.MeshStandardMaterial({color:0xe2e8f0})); dish.position.y=107; dish.rotation.x=Math.PI; site.add(dish);
-site.add(new THREE.AxesHelper(120)); // E/N frame marker
-scene.add(site);
+function enuXyz(e, n, u, out) { out.set(e, u, -n); return out; }
 
-// P2: sensor volume wireframes (truth about coverage)
-const volumes=new THREE.Group(); scene.add(volumes);
-function ringLine(radius, color, dashed, dot){
-  const pts=[]; for(let i=0;i<=128;i++){ const a=i/128*Math.PI*2; pts.push(new THREE.Vector3(Math.sin(a)*radius,2,Math.cos(a)*radius)); }
-  const g=new THREE.BufferGeometry().setFromPoints(pts);
-  return new THREE.Line(g, new THREE.LineDashedMaterial({color, dashSize:dashed?60:2, gapSize:dashed?40:2, transparent:true, opacity:.55}));
-}
-volumes.add(ringLine(8000,0xef4444,true));   // radar max range 8 km
-volumes.add(ringLine(5000,0x60a5fa,true));   // EO max range 5 km
-volumes.add(ringLine(6000,0xfb923c,false));  // RF max range 6 km
+/* ============================================================ api + boot */
+const $ = id => document.getElementById(id);
+const canvas = $('c');
+let apiOK = false;
 
-// P5: drone factory (own color), scale toggled 40x <-> 1x
-let SCALE=40;
-function makeDrone(color){
-  const g=new THREE.Group();
-  const body=new THREE.Mesh(new THREE.BoxGeometry(0.42,0.10,0.32), new THREE.MeshStandardMaterial({color:0xf8fafc, roughness:.3, metalness:.12})); g.add(body);
-  const belly=new THREE.Mesh(new THREE.BoxGeometry(0.40,0.05,0.30), new THREE.MeshStandardMaterial({color, emissive:color, emissiveIntensity:.35})); belly.position.y=-0.05; g.add(belly);
-  const armMat=new THREE.MeshStandardMaterial({color:0x64748b});
-  [[0.22,0.16],[0.22,-0.16],[-0.22,0.16],[-0.22,-0.16]].forEach(([x,z],i)=>{
-    const arm=new THREE.Mesh(new THREE.CylinderGeometry(0.02,0.02,Math.hypot(x,z)*0.92,8), armMat);
-    arm.position.set(x*0.5,0,z*0.5); arm.rotation.y=Math.atan2(x,z); arm.rotation.x=Math.PI/2; g.add(arm);
-    const motor=new THREE.Mesh(new THREE.CylinderGeometry(0.06,0.06,0.05,10), new THREE.MeshStandardMaterial({color:0x0f172a})); motor.position.set(x,0.03,z); g.add(motor);
-    const prop=new THREE.Mesh(new THREE.BoxGeometry(0.4,0.02,0.03), new THREE.MeshStandardMaterial({color:0x7dd3fc, transparent:true, opacity:.9})); prop.position.set(x,0.07,z); prop.name='prop'+i; g.add(prop);
-  });
-  const halo=new THREE.Mesh(new THREE.SphereGeometry(0.45,16,12), new THREE.MeshBasicMaterial({color, transparent:true, opacity:.16, depthWrite:false}));
-  halo.name='halo'; halo.scale.setScalar(1.6); g.add(halo);
-  g.scale.setScalar(SCALE);
-  return g;
-}
-// P7: swarm-native drone registry
-const drones=[]; // {group, trail:[], line2, fallback, color}
-function ensureDrones(n){
-  while(drones.length<n){
-    const i=drones.length, color=FLEET_COLORS[i];
-    const group=makeDrone(color); scene.add(group);
-    // beam from drone to ground
-    const beam=new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0,0,0), new THREE.Vector3(0,-1,0)]), new THREE.LineBasicMaterial({color, transparent:true, opacity:.4}));
-    beam.name='beam'; group.add(beam);
-    drones.push({group, trail:[], line2:null, fallback:null,
-      lineMat:new LineMaterial({color, linewidth:6, transparent:true, opacity:.95, resolution:new THREE.Vector2(innerWidth,innerHeight)})});
-  }
-  drones.forEach((d,i)=>{ d.group.visible=i<n; if(d.line2) d.line2.visible=i<n; if(d.fallback) d.fallback.visible=i<n; });
-}
-function updateTrail(d){
-  if(d.trail.length<6){ if(d.line2){scene.remove(d.line2);d.line2=null;} if(d.fallback){scene.remove(d.fallback);d.fallback=null;} return; }
-  if(!d.line2){
-    const geom=new LineGeometry(); geom.setPositions(d.trail);
-    d.line2=new Line2(geom, d.lineMat); d.line2.computeLineDistances(); scene.add(d.line2);
-    const g2=new THREE.BufferGeometry(); g2.setAttribute('position', new THREE.Float32BufferAttribute(new Float32Array(d.trail),3));
-    d.fallback=new THREE.Line(g2, new THREE.LineBasicMaterial({color:0x22d3ee, transparent:true, opacity:.8})); scene.add(d.fallback);
-  } else {
-    d.line2.geometry.setPositions(d.trail); d.line2.computeLineDistances(); d.line2.material.resolution.set(innerWidth,innerHeight);
-    d.fallback.geometry.setAttribute('position', new THREE.Float32BufferAttribute(new Float32Array(d.trail),3));
-    d.fallback.geometry.attributes.position.needsUpdate=true;
-  }
-}
-
-// P5: instanced detection pools (3D) — bearings as RAYS, points as instances
-const MAXI=96;
-const instDet=new THREE.InstancedMesh(new THREE.SphereGeometry(14,10,8), new THREE.MeshBasicMaterial({color:0x22c55e, transparent:true, opacity:.9}), MAXI);
-const instClut=new THREE.InstancedMesh(new THREE.SphereGeometry(10,10,8), new THREE.MeshBasicMaterial({color:0xf59e0b, transparent:true, opacity:.75}), MAXI);
-instDet.count=0; instClut.count=0; scene.add(instDet); scene.add(instClut);
-const rayMat=new THREE.LineBasicMaterial({color:0xfb923c, transparent:true, opacity:.5});
-const rays=new THREE.LineSegments(new THREE.BufferGeometry().setAttribute('position', new THREE.Float32BufferAttribute(new Float32Array(MAXI*6),3)), rayMat);
-scene.add(rays); let nRays=0;
-const _m4=new THREE.Matrix4(), _v3=new THREE.Vector3();
-function setDets3D(obs){
-  let nd=0, nc=0; nRays=0;
-  const pos=rays.geometry.attributes.position;
-  for(const k of ['radar','eo','rf']){
-    const arr=obs[k]?.dets||[];
-    for(const d of arr){
-      const az=d[0], el=d[1], r=d[2], clut=d[3]>0.5;
-      if(clut && k==='rf') continue;
-      if(r!=null && isFinite(r) && r>0){
-        if(nd+nc>=MAXI*2) break;
-        const enu=sphToEnu(az,el,r), p=to3(enu);
-        _m4.makeTranslation(p.x,p.y,p.z);
-        if(clut){ if(nc<MAXI){ instClut.setMatrixAt(nc++,_m4);} }
-        else if(nd<MAXI){ instDet.setMatrixAt(nd++,_m4); }
-      } else if(k==='rf' || k==='eo'){ // bearing-only -> honest RAY from site
-        if(nRays<MAXI){
-          const a=az*Math.PI/180, R=6000;
-          pos.setXYZ(nRays*2, 0, 2, 0);
-          pos.setXYZ(nRays*2+1, Math.sin(a)*R, 2, Math.cos(a)*R);
-          nRays++;
-        }
-      }
-    }
-  }
-  instDet.count=nd; instClut.count=nc;
-  instDet.instanceMatrix.needsUpdate=true; instClut.instanceMatrix.needsUpdate=true;
-  rays.geometry.setDrawRange(0,nRays*2); pos.needsUpdate=true;
-}
-
-// P3: camera grammar
-const CAMS=['Orbit','Chase','Tower','Top'];
-let camMode='Orbit';
-const chasePos=new THREE.Vector3(700,500,-1500);
-function setCam(m){ camMode=m; document.getElementById('cam').textContent=m; document.getElementById('camB').textContent='Cam: '+m; }
-function tickCamera(dt, fleetPos, fleetVel){
-  if(!fleetPos.length) return;
-  const c=fleetPos[0];
-  if(camMode==='Chase'){
-    const v=fleetVel[0]||[0,0,0];
-    const dir=new THREE.Vector3(v[0],0,v[2]); const sp=dir.length();
-    if(sp>1) dir.normalize(); else dir.set(0,0,1);
-    const desired=new THREE.Vector3(c.x,c.y,c.z).addScaledVector(dir,-260).add(new THREE.Vector3(0,130,0));
-    const alpha=1-Math.exp(-3.0*dt);
-    chasePos.lerp(desired,alpha);
-    camera.position.copy(chasePos); controls.target.lerp(new THREE.Vector3(c.x+dir.x*120,c.y,c.z+dir.z*120),alpha);
-    controls.enabled=false;
-  } else {
-    controls.enabled=true;
-    if(camMode==='Tower'){ camera.position.set(0,150,0); controls.target.set(c.x*0.5,Math.max(c.y,60),c.z*0.5); }
-    else if(camMode==='Top'){
-      let cx=0,cz=0; fleetPos.forEach(p=>{cx+=p.x;cz+=p.z;}); cx/=fleetPos.length; cz/=fleetPos.length;
-      camera.position.set(cx,2600,cz+0.01); controls.target.set(cx,0,cz);
-    }
-  }
-}
-
-// P6: the PPI — tracker's eye
-const ppi=document.getElementById('ppi'), pctx=ppi.getContext('2d');
-const blips=[]; // {az, gr, clut, t, kind}
-const R_PPI=300, SCALE_PPI=R_PPI/8500; // px per metre (radar 8.5 km edge)
-function pushBlips(obs, tNow){
-  for(const k of ['radar','eo']){
-    for(const d of (obs[k]?.dets||[])){
-      if(d[2]==null||!isFinite(d[2])) continue;
-      const gr=d[2]*Math.cos(d[1]*Math.PI/180);
-      if(gr>8400) continue;
-      blips.push({az:d[0], gr, clut:d[3]>0.5, t:tNow, kind:k});
-    }
-  }
-  for(const d of (obs['rf']?.dets||[])){
-    if(d[3]>0.5) continue;
-    blips.push({az:d[0], gr:8000, clut:false, t:tNow, kind:'rf'});
-  }
-  while(blips.length>420) blips.shift();
-}
-function drawPPI(tNow, fleet){
-  const S=600, cx=S/2, cy=S/2;
-  pctx.clearRect(0,0,S,S);
-  // rings
-  pctx.strokeStyle='rgba(56,189,248,.18)'; pctx.lineWidth=1.5;
-  for(let km=2;km<=8;km+=2){ pctx.beginPath(); pctx.arc(cx,cy,km*1000*SCALE_PPI,0,Math.PI*2); pctx.stroke(); }
-  // cross
-  pctx.beginPath(); pctx.moveTo(cx,10); pctx.lineTo(cx,S-10); pctx.moveTo(10,cy); pctx.lineTo(S-10,cy); pctx.stroke();
-  // N/E/S/W
-  pctx.fillStyle='#7dd3fc'; pctx.font='22px ui-monospace'; pctx.textAlign='center';
-  pctx.fillText('N',cx,30); pctx.fillText('S',cx,S-14); pctx.fillText('E',S-22,cy+8); pctx.fillText('W',20,cy+8);
-  // sweep (1 rev/s)
-  const sw=(tNow%1000)/1000*Math.PI*2;
-  const grad=pctx.createConicGradient ? null : null;
-  pctx.save(); pctx.translate(cx,cy); pctx.rotate(sw);
-  const sg=pctx.createLinearGradient(0,0,0,-R_PPI);
-  sg.addColorStop(0,'rgba(74,222,128,.0)'); sg.addColorStop(1,'rgba(74,222,128,.35)');
-  pctx.fillStyle=sg; pctx.beginPath(); pctx.moveTo(0,0); pctx.arc(0,0,R_PPI-4,-0.10,0); pctx.closePath(); pctx.fill();
-  pctx.strokeStyle='rgba(74,222,128,.6)'; pctx.beginPath(); pctx.moveTo(0,0); pctx.lineTo(0,-(R_PPI-4)); pctx.stroke();
-  pctx.restore();
-  // blips with afterglow
-  for(const b of blips){
-    const age=tNow-b.t; if(age>2500){ continue; }
-    const a=Math.exp(-age/1200);
-    const x=cx+Math.sin(b.az*Math.PI/180)*b.gr*SCALE_PPI, y=cy-Math.cos(b.az*Math.PI/180)*b.gr*SCALE_PPI;
-    if(b.kind==='rf'){ // rim arc at bearing
-      pctx.strokeStyle=`rgba(251,146,60,${a})`; pctx.lineWidth=3;
-      pctx.beginPath(); pctx.arc(cx,cy,R_PPI-8,(b.az-90-2.5)*Math.PI/180,(b.az-90+2.5)*Math.PI/180); pctx.stroke();
-      continue;
-    }
-    pctx.fillStyle=b.clut?`rgba(251,191,36,${a})`:`rgba(74,222,128,${a})`;
-    pctx.beginPath(); pctx.arc(x,y,b.clut?4:5.5,0,Math.PI*2); pctx.fill();
-  }
-  // truth ghosts (dashed circles in fleet colors)
-  for(const tg of fleet){
-    const gr=Math.hypot(tg.pos[0],tg.pos[1]);
-    const x=cx+Math.sin(tg.az*Math.PI/180)*gr*SCALE_PPI, y=cy-Math.cos(tg.az*Math.PI/180)*gr*SCALE_PPI;
-    pctx.strokeStyle=FLEET_HEX[tg.idx%4]; pctx.lineWidth=2; pctx.setLineDash([6,5]);
-    pctx.beginPath(); pctx.arc(x,y,9,0,Math.PI*2); pctx.stroke(); pctx.setLineDash([]);
-    pctx.fillStyle=FLEET_HEX[tg.idx%4]; pctx.font='20px ui-monospace';
-    pctx.fillText('D'+(tg.idx+1), x+14, y-10);
-  }
-}
-
-// ---------- state / API ----------
-let state=null, prevState=null, mode='auto20', dur=20, paused=false, keys={}, joy={x:0,y:0,active:false}, launched=false, nDrones=3;
-const modeDur={auto20:20, auto40:40, swm:20, manual:600};
-async function api(path, body){
-  const r=await fetch(path,{method:body?'POST':'GET', headers:{'Content-Type':'application/json'}, body: body?JSON.stringify(body):undefined});
-  if(!r.ok) throw new Error(await r.text());
+async function api(path, body) {
+  const r = await fetch(path, body === undefined ? {method:'GET'} :
+    {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)});
+  if (!r.ok) throw new Error(path + ' -> ' + r.status);
   return r.json();
 }
-function showMsg(t, ms=2600){ const el=document.getElementById('msg'); el.textContent=t; el.style.display='block'; if(ms) setTimeout(()=> el.style.display='none', ms); }
-function setMode(m){
-  mode=m; dur=modeDur[m];
-  document.querySelectorAll('#a20,#a40,#swm,#man').forEach(b=> b.classList.remove('on'));
-  document.querySelector({auto20:'#a20',auto40:'#a40',swarm:'#swm',manual:'#man'}[m]).classList.add('on');
-  document.getElementById('nrow').style.display = m==='swm'?'flex':'none';
-  document.getElementById('dur').textContent = m==='manual'?'∞ (600s max)':dur+'s';
-  document.getElementById('t1').textContent = m==='manual'?'∞':dur.toFixed(1)+'s';
-  document.getElementById('mode').textContent = m==='auto20'?'Auto 20s':m==='auto40'?'Auto 40s':m==='swm'?`Swarm ${nDrones}×20s`:'Manual ∞';
-}
-setMode('auto20');
-document.getElementById('a20').onclick=()=>setMode('auto20');
-document.getElementById('a40').onclick=()=>setMode('auto40');
-document.getElementById('swm').onclick=()=>setMode('swm');
-document.getElementById('man').onclick=()=>setMode('manual');
-document.querySelectorAll('.non').forEach(b=> b.onclick=()=>{ nDrones=+b.dataset.n; document.querySelectorAll('.non').forEach(x=>x.classList.remove('on')); b.classList.add('on'); setMode('swm'); });
-document.querySelector('.non[data-n="3"]').classList.add('on');
-document.getElementById('go').onclick=()=>reset();
-document.getElementById('reset').onclick=()=>reset();
-document.getElementById('pause').onclick=e=>{ paused=!paused; e.target.textContent=paused?'Resume':'Pause'; };
-document.getElementById('vol').onclick=e=>{ volumes.visible=!volumes.visible; e.target.textContent='Volumes: '+(volumes.visible?'ON':'OFF'); e.target.classList.toggle('on',volumes.visible); };
-document.getElementById('scale').onclick=e=>{ SCALE=SCALE===40?1:40; e.target.textContent=SCALE===40?'Scale: 40×':'Scale: real 0.5m'; drones.forEach(d=>d.group.scale.setScalar(SCALE)); };
-document.getElementById('camB').onclick=()=>{ setCam(CAMS[(CAMS.indexOf(camMode)+1)%CAMS.length]); };
-document.getElementById('ppi').style.display='block';
 
-async function reset(){
-  const isSwarm = mode==='swm';
-  const autopilot = mode!=='manual';
-  const d = mode==='manual' ? 600 : dur;
-  try{
-    const res=await api('/api/reset',{scenario: isSwarm?'approach,approach,orbit,serpentine':'approach',
-      duration_s:d, autopilot, seed: Math.floor(Math.random()*1e9), n_drones: isSwarm?nDrones:1});
-    state=res; prevState=null; launched=true;
-    drones.forEach(dd=>{ dd.trail=[]; updateTrail(dd); });
-    window._tot=0;
-    document.getElementById('t').textContent='0.0s';
-    document.getElementById('cR').textContent='0';document.getElementById('cE').textContent='0';document.getElementById('cF').textContent='0';
-    apply(res, true);
-    const p=res.gt.targets?res.gt.targets[0].pos:res.gt.pos;
-    const v3=to3(p); controls.target.copy(v3); camera.position.set(v3.x+500,v3.y+380,v3.z-900);
-    canvas.focus();
-    showMsg(autopilot?(isSwarm?`Swarm ${nDrones} drones launched — watch the PPI when trajectories cross`:`Auto ${d}s launched`):'Manual launched — CLICK CANVAS then WASD/QE to fly', 3200);
-  }catch(e){ console.error(e); document.getElementById('live').textContent='● offline'; showMsg('Server offline — is it on :8000?', 3000); }
+function showBanner() {
+  $('banner').style.display = 'flex';
+  $('hint').style.display = 'none';
 }
 
-function fleetOf(gt){
-  if(gt.targets) return gt.targets.map(t=>({pos:t.pos, vel:t.vel, az:t.az_deg, el:t.el_deg, r:t.range_m, idx:t.idx, cls:t.true_class, beh:t.behaviour, tx:t.tx_on}));
-  return [{pos:gt.pos, vel:gt.vel, az:gt.az_deg, el:gt.el_deg, r:gt.range_m, idx:0, cls:gt.true_class, beh:gt.scenario, tx:gt.tx_on}];
+/* ============================================================ toasts */
+let msgTimer = 0;
+function toast(text, ms = 2600) {
+  const m = $('msg'); m.textContent = text; m.style.display = 'block';
+  clearTimeout(msgTimer); msgTimer = setTimeout(() => { m.style.display = 'none'; }, ms);
 }
+/* ============================================================ three scene */
+const renderer = new THREE.WebGLRenderer({canvas, antialias: true});
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x070b14);
+scene.fog = new THREE.Fog(0x070b14, 5000, 12000);
+const camera = new THREE.PerspectiveCamera(55, innerWidth / innerHeight, 1, 30000);
+camera.position.set(600, 420, 700);
+const controls = new OrbitControls(camera, canvas);
+controls.enableDamping = true; controls.enabled = false;
 
-function apply(res, resetAll=false){
-  const fleet=fleetOf(res.gt);
-  ensureDrones(Math.max(1,fleet.length));
-  // trails + transforms (final server state; interpolation smooths between)
-  fleet.forEach((tg,i)=>{
-    const d=drones[i], p=to3(tg.pos);
-    d.group.position.copy(p);
-    if(tg.vel && (tg.vel[0]||tg.vel[1])) d.group.rotation.y=Math.atan2(tg.vel[0],tg.vel[1]);
-    d.group.children.forEach(ch=>{ if(ch.name&&ch.name.startsWith('prop')) ch.rotation.y+=0.8; });
-    const beam=d.group.getObjectByName('beam');
-    if(beam){ beam.geometry.setFromPoints([new THREE.Vector3(0,0,0), new THREE.Vector3(0,-Math.max(p.y,0.5)/SCALE,0)]); }
-    if(resetAll) d.trail=[];
-    d.trail.push(p.x,p.y,p.z); if(d.trail.length>9000) d.trail.splice(0,3);
-    updateTrail(d);
-  });
-  // interpolation anchors for render loop
-  prevState={fleet: state&&state.gt&&!resetAll? lastFleet : fleet.map(t=>({pos:t.pos.slice()})), t:res.gt.t};
-  lastFleet=fleet.map(t=>({pos:t.pos.slice()}));
-  setDets3D(res.obs);
-  const tNow=performance.now(); pushBlips(res.obs,tNow);
-  // HUD
-  document.getElementById('t').textContent=res.gt.t.toFixed(1)+'s';
-  document.getElementById('ndets').textContent=(res.obs.radar?.n||0)+(res.obs.eo?.n||0)+(res.obs.rf?.n||0);
-  document.getElementById('r').textContent=res.obs.radar?.n||0; document.getElementById('e').textContent=res.obs.eo?.n||0; document.getElementById('f').textContent=res.obs.rf?.n||0;
-  document.getElementById('cR').textContent=res.obs.radar?.n||0; document.getElementById('cE').textContent=res.obs.eo?.n||0; document.getElementById('cF').textContent=res.obs.rf?.n||0;
-  if(res.recording_len!=null) document.getElementById('steps').textContent=res.recording_len;
-  window._tot=(window._tot||0)+fleet.reduce((a,tg)=>a+0,0)+((res.obs.radar?.n||0)+(res.obs.eo?.n||0)+(res.obs.rf?.n||0));
-  document.getElementById('tot').textContent=window._tot;
-  const pct = mode==='manual' ? Math.min(100,res.gt.t/60*100) : Math.min(100,res.gt.t/dur*100);
-  document.getElementById('fill').style.width=pct.toFixed(1)+'%'; document.getElementById('pct').textContent=pct.toFixed(0)+'%';
-  document.getElementById('t0').textContent=res.gt.t.toFixed(1)+'s';
-  // fleet table — fixed layout, textContent only
-  const tb=document.getElementById('fleetB'); tb.innerHTML='';
-  fleet.forEach(tg=>{
-    const tr=document.createElement('tr');
-    tr.innerHTML=`<td><span class="dot" style="background:${FLEET_HEX[tg.idx%4]}"></span>D${tg.idx+1}</td>`+
-      `<td>${tg.beh||'—'}</td><td>${(tg.r/1000).toFixed(2)}km</td><td>${tg.az.toFixed(0)}°</td><td>${tg.pos[2].toFixed(0)}m</td>`;
-    tb.appendChild(tr);
-  });
-  // obs panel
-  let txt='';
-  for(const k of ['radar','eo','rf']){
-    const o=res.obs[k]; txt+=k.toUpperCase().padEnd(6)+(o.n?` ${o.n} dets\n`:' --\n');
-    for(let i=0;i<Math.min(o.n,2);i++){ const r=o.dets[i];
-      const az=r[0]!=null?r[0].toFixed(1):'--', el=r[1]!=null?r[1].toFixed(1):'--', rr=r[2]!=null&&isFinite(r[2])?(r[2]/1000).toFixed(2)+'km':'BEARING-ONLY';
-      const confs=r.slice(7,11).filter(v=>v!=null); const mx=Math.max(...confs);
-      txt+=`  az ${az} el ${el} r ${rr} conf ${mx.toFixed(2)}${r[3]>0.5?' [clutter]':''}\n`; }
+scene.add(new THREE.AmbientLight(0x8899bb, 0.9));
+const sun = new THREE.DirectionalLight(0xffffff, 1.1); sun.position.set(2000, 3000, 1000);
+scene.add(sun);
+
+const ground = new THREE.GridHelper(12000, 24, 0x1b2a44, 0x12203a);
+ground.position.y = -0.5; scene.add(ground);
+const siteMat = new THREE.MeshBasicMaterial({color: 0x7dd3fc});
+const site = new THREE.Group();
+const pad = new THREE.Mesh(new THREE.CylinderGeometry(14, 18, 6, 20), siteMat);
+pad.position.y = 3; site.add(pad);
+const mast = new THREE.Mesh(new THREE.CylinderGeometry(1.2, 1.2, 60, 8), siteMat);
+mast.position.y = 30; site.add(mast);
+scene.add(site);
+
+/* sensor volumes: radar 8 km ring, EO 60° wedge @3 km, RF 5 km ring */
+const volumes = new THREE.Group(); volumes.visible = false; scene.add(volumes);
+function circleLine(r, color, y = 0, dashed = false) {
+  const pts = [];
+  for (let k = 0; k <= 128; k++) {
+    const a = k / 128 * Math.PI * 2;
+    pts.push(new THREE.Vector3(Math.sin(a) * r, y, -Math.cos(a) * r));
   }
-  document.getElementById('obs').textContent=txt;
-  document.getElementById('live').textContent='● live'; document.getElementById('live').style.color='#bbf7d0';
+  const g = new THREE.BufferGeometry().setFromPoints(pts);
+  const m = dashed
+    ? new THREE.LineDashedMaterial({color, dashSize: 60, gapSize: 40, transparent: true, opacity: 0.55})
+    : new THREE.LineBasicMaterial({color, transparent: true, opacity: 0.55});
+  const l = new THREE.Line(g, m);
+  if (dashed) l.computeLineDistances();
+  return l;
 }
-let lastFleet=null;
-
-// manual input (drone 1 only)
-function setFocusHint(on){ document.getElementById('focusHint').style.display = on? 'none':'block'; }
-document.addEventListener('keydown',e=>{
-  const k=e.key.toLowerCase();
-  if(['w','a','s','d','q','e',' '].includes(k)) { keys[k]=true; e.preventDefault(); }
-  else keys[k]=true;
-  if(k==='c') setCam(CAMS[(CAMS.indexOf(camMode)+1)%CAMS.length]);
-  if(k==='g') document.getElementById('vol').click();
-  if(k==='p'){ const el=document.getElementById('ppi'); el.style.display=el.style.display==='none'?'block':'none'; document.getElementById('ppileg').style.display=el.style.display; }
-  if(k==='r') reset(); if(k===' ') document.getElementById('pause').click();
-},{capture:true});
-document.addEventListener('keyup',e=>{ keys[e.key.toLowerCase()]=false; },{capture:true});
-canvas.addEventListener('click',()=>{ canvas.focus(); setFocusHint(true); });
-const joyEl=document.getElementById('joy'), stick=document.getElementById('stick');
-function jpos(ev){ const r=joyEl.getBoundingClientRect(); const t=ev.touches?ev.touches[0]:ev; let x=(t.clientX-(r.left+r.width/2))/(r.width/2), y=(t.clientY-(r.top+r.height/2))/(r.height/2); const l=Math.hypot(x,y); if(l>1){x/=l;y/=l} return {x,y}; }
-joyEl.addEventListener('pointerdown',e=>{ joy.active=true; joyEl.setPointerCapture(e.pointerId); });
-joyEl.addEventListener('pointermove',e=>{ if(!joy.active) return; const p=jpos(e); joy.x=p.x; joy.y=-p.y; stick.style.transform=`translate(${joy.x*46}px,${-joy.y*46}px)`; });
-const jend=()=>{ joy.active=false; joy.x=0; joy.y=0; stick.style.transform='translate(0,0)'; };
-joyEl.addEventListener('pointerup',jend); joyEl.addEventListener('pointercancel',jend);
-
-// export
-async function doExp(fmt){
-  try{ const r=await fetch('/api/export',{method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({format:fmt})});
-    const blob=await r.blob(); const url=URL.createObjectURL(blob); const a=document.createElement('a'); a.href=url;
-    const cd=r.headers.get('Content-Disposition'); const m=cd&&cd.match(/filename="?([^"]+)"?/);
-    a.download=m?m[1]:`skygym.${fmt}`; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url); showMsg('Exported '+a.download, 2200);
-  }catch(e){ alert(e.message); }
-}
-document.getElementById('expJ').onclick=()=>doExp('jsonl');
-document.getElementById('expC').onclick=()=>doExp('csv');
-
-// P4: fixed-step sim, free-running render
-let inFlight=false;
-async function tick(nSteps=1){
-  if(!launched || paused || !state || inFlight) return;
-  inFlight=true;
-  let action=null;
-  if(mode!=='manual'){ action=null; }
-  else {
-    let ax=0,ay=0,az=0;
-    if(keys['w']) ay+=3.6; if(keys['s']) ay-=3.6; if(keys['d']) ax+=3.6; if(keys['a']) ax-=3.6; if(keys['e']) az+=3.6; if(keys['q']) az-=3.6;
-    ax+=joy.x*4.0; ay+=joy.y*4.0;
-    if(ax||ay||az) action=[ax,ay,az];
-    else { const v=state.gt.pos?state.gt.vel:[0,0,0]; const n=Math.hypot(v[0],v[1],v[2]); action= n>0.25? [-v[0]*1.15,-v[1]*1.15,-v[2]*1.15] : [0,0,0]; }
+volumes.add(circleLine(8000, 0x22c55e));            // radar max range
+volumes.add(circleLine(5000, 0xe879f9, 0, true));   // RF DF ring
+{ // EO wedge: 60° azimuth, to 3 km
+  const pts = [new THREE.Vector3(0, 0, 0)];
+  for (let k = 0; k <= 16; k++) {
+    const a = (-30 + k / 16 * 60) * Math.PI / 180;
+    pts.push(new THREE.Vector3(Math.sin(a) * 3000, 0, -Math.cos(a) * 3000));
   }
-  try{
-    const res=await api('/api/step',{action, steps:nSteps}); state=res;
-    apply(res);
-    if(res.terminated||res.truncated){
-      launched=false;
-      showMsg(mode==='manual'?'Manual ended — Export JSONL/CSV':`Run complete — ${trailPts()} trail pts — click Launch for next`, 3600);
+  pts.push(new THREE.Vector3(0, 0, 0));
+  const g = new THREE.BufferGeometry().setFromPoints(pts);
+  volumes.add(new THREE.Line(g, new THREE.LineBasicMaterial({color: 0x22d3ee, transparent: true, opacity: 0.5})));
+}
+
+/* ============================================================ drones + labels + trails */
+let SCALE = 40;
+const TRAIL_N = 720;
+const drones = [];                       // {group, body, halo, beam, trail, head, count, label, col}
+function makeHaloTex(col) {
+  const cv = document.createElement('canvas'); cv.width = cv.height = 64;
+  const g = cv.getContext('2d');
+  const gr = g.createRadialGradient(32, 32, 2, 32, 32, 30);
+  gr.addColorStop(0, 'rgba(255,255,255,.9)');
+  gr.addColorStop(0.35, col + 'cc');
+  gr.addColorStop(1, 'rgba(0,0,0,0)');
+  g.fillStyle = gr; g.fillRect(0, 0, 64, 64);
+  return new THREE.CanvasTexture(cv);
+}
+function makeDrone(i) {
+  const col = DCOL[i], css = DCSS[i];
+  const group = new THREE.Group();
+  const body = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.14, 0.5),
+    new THREE.MeshBasicMaterial({color: col}));
+  group.add(body);
+  for (const [dx, dz] of [[0.42, 0.42], [-0.42, 0.42], [0.42, -0.42], [-0.42, -0.42]]) {
+    const rotor = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.16, 0.03, 12),
+      new THREE.MeshBasicMaterial({color: 0x0f172a}));
+    rotor.position.set(dx, 0.08, dz); group.add(rotor);
+  }
+  const halo = new THREE.Sprite(new THREE.SpriteMaterial({
+    map: makeHaloTex(css), transparent: true, depthWrite: false}));
+  halo.scale.setScalar(1.5); group.add(halo);
+  const beamG = new THREE.BufferGeometry();
+  beamG.setAttribute('position', new THREE.BufferAttribute(new Float32Array(6), 3));
+  const beam = new THREE.Line(beamG, new THREE.LineBasicMaterial(
+    {color: col, transparent: true, opacity: 0.25}));
+  scene.add(beam);
+  group.scale.setScalar(SCALE); scene.add(group);
+  const trailG = new THREE.BufferGeometry();
+  trailG.setAttribute('position', new THREE.BufferAttribute(new Float32Array(TRAIL_N * 3), 3));
+  trailG.setDrawRange(0, 0);
+  const trail = new THREE.Line(trailG, new THREE.LineBasicMaterial({color: col, transparent: true, opacity: 0.5}));
+  trail.frustumCulled = false; scene.add(trail);
+  const label = document.createElement('div');
+  label.className = 'dlabel'; label.style.color = css;
+  $('labels').appendChild(label);
+  return {group, beam, trail, geo: trailG, head: 0, count: 0, label, col: css};
+}
+for (let i = 0; i < MAXD; i++) drones.push(makeDrone(i));
+
+const _tp = new Float32Array(TRAIL_N * 3);
+function trailPush(d, x, y, z) {
+  const arr = d.geo.attributes.position.array;
+  arr[d.head * 3] = x; arr[d.head * 3 + 1] = y; arr[d.head * 3 + 2] = z;
+  d.head = (d.head + 1) % TRAIL_N;
+  d.count = Math.min(d.count + 1, TRAIL_N);
+  d.geo.setDrawRange(0, d.count);
+  d.geo.attributes.position.needsUpdate = true;
+}
+function trailClear(d) { d.head = 0; d.count = 0; d.geo.setDrawRange(0, 0); }
+
+/* screen-space labels: never lose a drone (P9) */
+const _v = new THREE.Vector3();
+function updateLabels(gtTargets, rendPos) {
+  const W = innerWidth, H = innerHeight, M = 46;
+  for (let i = 0; i < MAXD; i++) {
+    const d = drones[i], el = d.label;
+    if (i >= gtTargets.length) { el.style.display = 'none'; continue; }
+    _v.copy(rendPos[i]); _v.y += SCALE * 0.5 + 6;
+    _v.project(camera);
+    const behind = _v.z > 1;
+    let sx = (_v.x * 0.5 + 0.5) * W, sy = (-_v.y * 0.5 + 0.5) * H;
+    const off = behind || sx < M || sx > W - M || sy < M || sy > H - M;
+    if (off) {  // clamp to screen edge with an arrow pointing outward
+      let dx = sx - W / 2, dy = sy - H / 2;
+      if (behind) { dx = -dx; dy = -dy; }
+      const L = Math.max(Math.abs(dx) / (W / 2 - M), Math.abs(dy) / (H / 2 - M));
+      if (L > 0) { dx /= L; dy /= L; }
+      sx = W / 2 + dx; sy = H / 2 + dy;
+      el.classList.add('edge');
+      const ang = Math.atan2(dy, dx) * 180 / Math.PI + 90;
+      el.innerHTML = `<b>▲</b> D${i + 1}`;
+      el.style.transform = `translate(-50%,-50%) rotate(${ang}deg)`;
+      el.firstChild.style && (el.firstChild.style.display = 'inline-block');
+    } else {
+      el.classList.remove('edge');
+      const tg = gtTargets[i];
+      const rg = tg ? (tg.range_m / 1000).toFixed(2) : '?';
+      el.style.transform = 'translate(-50%,-135%)';
+      el.innerHTML = `<b>D${i + 1}</b> <span class="rg">${rg} km</span>`;
     }
-  }catch(e){ console.error(e); document.getElementById('live').textContent='● error'; document.getElementById('live').style.color='#fecaca'; }
-  finally{ inFlight=false; }
+    el.classList.toggle('you', mode === 'fly' && i === 0);
+    el.style.left = sx + 'px'; el.style.top = sy + 'px';
+    el.style.display = 'block';
+  }
 }
-function trailPts(){ return drones.reduce((a,d)=>a+d.trail.length/3,0); }
 
-let acc=0, lastTick=performance.now();
-setInterval(()=>{ const now=performance.now(); acc+=now-lastTick; lastTick=now;
-  if(acc>=100){ acc=Math.min(acc,600); const due=Math.min(6,Math.floor(acc/100)); acc-=due*100; tick(due); } },25);
+/* ============================================================ detection pools (P5: zero per-frame alloc) */
+const DET_CAP = 96, RAY_CAP = 64;
+const detMesh = new THREE.InstancedMesh(
+  new THREE.SphereGeometry(9, 10, 8),
+  new THREE.MeshBasicMaterial({color: 0xffffff, transparent: true, opacity: 0.85}), DET_CAP);
+detMesh.frustumCulled = false; detMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+scene.add(detMesh);
+const rayGeo = new THREE.BufferGeometry();
+rayGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(RAY_CAP * 6), 3));
+const rays = new THREE.LineSegments(rayGeo, new THREE.LineBasicMaterial(
+  {color: 0xe879f9, transparent: true, opacity: 0.4}));
+rays.frustumCulled = false; scene.add(rays);
+const _m4 = new THREE.Matrix4(), _q = new THREE.Quaternion(), _s3 = new THREE.Vector3(1, 1, 1), _p3 = new THREE.Vector3();
+const _col = new THREE.Color();
+const dcolTmp = new Float32Array(DET_CAP * 3);
+detMesh.instanceColor = new THREE.InstancedBufferAttribute(dcolTmp, 3);
+const RAY_LEN = 3200;
 
-let last=performance.now(), frames=0, lastT=performance.now();
-function anim(){
-  requestAnimationFrame(anim);
-  const now=performance.now(); const dt=Math.min(0.1,(now-lastT)/1000); lastT=now;
-  const fleet=lastFleet||[]; const prevF=prevState&&prevState.fleet||fleet;
-  // render-time interpolation between last two server states
-  const alpha=Math.min(1, acc/100);
-  fleet.forEach((tg,i)=>{
-    const d=drones[i]; if(!d) return;
-    const pp=prevF[i]?prevF[i].pos:tg.pos;
-    const a=to3(pp), b=to3(tg.pos);
-    d.group.position.set(a.x+(b.x-a.x)*alpha, a.y+(b.y-a.y)*alpha, a.z+(b.z-a.z)*alpha);
+function drawDets(obs) {
+  let n = 0, nr = 0;
+  for (const key of ['radar', 'eo']) {
+    const ch = obs[key]; if (!ch) continue;
+    for (let i = 0; i < ch.n && n < DET_CAP; i++) {
+      const d = ch.dets[i];
+      const r = d[2];
+      if (r === null || !isFinite(r) || r <= 0) continue;   // bearing-only -> ray
+      azelDir(d[0], d[1], _v).multiplyScalar(r);
+      _p3.copy(_v); _q.identity(); _s3.set(1, 1, 1);
+      _m4.compose(_p3, _q, _s3); detMesh.setMatrixAt(n, _m4);
+      const clutter = d[3] >= 0.5;
+      _col.setHex(key === 'radar' ? (clutter ? C_CLUTTER : C_RADAR)
+                                  : (clutter ? C_CLUTTER : C_EO));
+      detMesh.setColorAt(n, _col); n++;
+    }
+  }
+  detMesh.count = n; detMesh.instanceMatrix.needsUpdate = true;
+  if (detMesh.instanceColor) detMesh.instanceColor.needsUpdate = true;
+  for (const key of ['eo', 'rf']) {                         // bearing rays
+    const ch = obs[key]; if (!ch) continue;
+    for (let i = 0; i < ch.n && nr < RAY_CAP; i++) {
+      const d = ch.dets[i];
+      const r = d[2];
+      if (r !== null && isFinite(r) && r > 0) continue;     // ranged dets already drawn
+      azelDir(d[0], d[1], _v);
+      const arr = rayGeo.attributes.position.array;
+      arr[nr * 6]     = _v.x * 20;      arr[nr * 6 + 1] = _v.y * 20;      arr[nr * 6 + 2] = _v.z * 20;
+      arr[nr * 6 + 3] = _v.x * RAY_LEN; arr[nr * 6 + 4] = _v.y * RAY_LEN; arr[nr * 6 + 5] = _v.z * RAY_LEN;
+      nr++;
+    }
+  }
+  rayGeo.setDrawRange(0, nr * 2);
+  rayGeo.attributes.position.needsUpdate = true;
+}
+/* ============================================================ PPI scope (P6: the tracker's eye) */
+const ppi = $('ppi'), pctx = ppi.getContext('2d');
+const R_PPI = 320, CX = R_PPI, CY = R_PPI, S_PPI = (R_PPI - 14) / 8500;
+const blips = [];                                  // {az, gr, kind, born}
+const BLIP_TTL = 2.0;
+function ppiPush(obs) {
+  const now = performance.now() / 1000;
+  const kinds = [['radar', 'r'], ['eo', 'e']];
+  for (const [key, kind] of kinds) {
+    const ch = obs[key]; if (!ch) continue;
+    for (let i = 0; i < ch.n; i++) {
+      const d = ch.dets[i], r = d[2];
+      if (r === null || !isFinite(r) || r <= 0) continue;
+      blips.push({az: d[0], gr: r * Math.cos(d[1] * Math.PI / 180),
+                  cl: d[3] >= 0.5, kind, born: now});
+    }
+  }
+  const rf = obs.rf;                               // RF = rim arc, never a blip
+  if (rf) for (let i = 0; i < rf.n; i++)
+    blips.push({az: rf.dets[i][0], gr: -1, cl: false, kind: 'f', born: now});
+  while (blips.length > 512) blips.shift();
+}
+function drawPPI(tNow) {
+  pctx.clearRect(0, 0, R_PPI * 2, R_PPI * 2);
+  pctx.save(); pctx.translate(CX, CY);
+  pctx.strokeStyle = 'rgba(60,110,160,.5)'; pctx.lineWidth = 2;
+  pctx.font = '18px ui-monospace'; pctx.fillStyle = 'rgba(120,150,190,.8)';
+  for (let km = 2; km <= 8; km += 2) {
+    pctx.beginPath(); pctx.arc(0, 0, km * 1000 * S_PPI, 0, Math.PI * 2); pctx.stroke();
+    pctx.fillText(km + 'km', 6, -km * 1000 * S_PPI + 20);
+  }
+  pctx.beginPath(); pctx.moveTo(-CX + 8, 0); pctx.lineTo(CX - 8, 0);
+  pctx.moveTo(0, -CY + 8); pctx.lineTo(0, CY - 8); pctx.stroke();
+  const sweep = (tNow % 1) * Math.PI * 2;          // 1 rev/s
+  pctx.strokeStyle = 'rgba(56,189,248,.85)'; pctx.lineWidth = 3;
+  pctx.beginPath(); pctx.moveTo(0, 0);
+  pctx.lineTo(Math.sin(sweep) * (R_PPI - 14), -Math.cos(sweep) * (R_PPI - 14));
+  pctx.stroke();
+  const now = performance.now() / 1000;
+  for (let i = blips.length - 1; i >= 0; i--) {
+    const b = blips[i], age = now - b.born;
+    if (age > BLIP_TTL) { blips.splice(i, 1); continue; }
+    const a = Math.max(0, 1 - age / BLIP_TTL);
+    if (b.kind === 'f') {                          // RF rim arc (az: N=up => theta=az-90°)
+      pctx.strokeStyle = `rgba(232,121,249,${0.85 * a})`; pctx.lineWidth = 7;
+      pctx.beginPath();
+      const th = b.az * Math.PI / 180 - Math.PI / 2;
+      pctx.arc(0, 0, R_PPI - 14, th - 0.045, th + 0.045);
+      pctx.stroke(); continue;
+    }
+    const x = Math.sin(b.az * Math.PI / 180) * b.gr * S_PPI;
+    const y = -Math.cos(b.az * Math.PI / 180) * b.gr * S_PPI;
+    pctx.fillStyle = b.kind === 'e' ? `rgba(34,211,238,${0.9 * a})`
+                   : b.cl ? `rgba(245,158,11,${0.8 * a})` : `rgba(34,197,94,${0.95 * a})`;
+    pctx.beginPath(); pctx.arc(x, y, b.cl ? 5 : 7, 0, Math.PI * 2); pctx.fill();
+  }
+  if (state && state.gt && state.gt.targets) {     // truth ghosts: dashed cyan
+    pctx.strokeStyle = 'rgba(103,232,249,.9)'; pctx.lineWidth = 2;
+    pctx.setLineDash([8, 7]);
+    state.gt.targets.forEach((tg, gi) => {
+      const gr = tg.range_m * Math.cos(tg.el_deg * Math.PI / 180);
+      const x = Math.sin(tg.az_deg * Math.PI / 180) * gr * S_PPI;
+      const y = -Math.cos(tg.az_deg * Math.PI / 180) * gr * S_PPI;
+      pctx.beginPath(); pctx.arc(x, y, 11, 0, Math.PI * 2); pctx.stroke();
+      pctx.font = '16px ui-monospace'; pctx.fillStyle = 'rgba(103,232,249,.9)';
+      pctx.fillText('T' + (gi + 1), x + 14, y - 10);
+      pctx.font = '18px ui-monospace';
+    })
+    pctx.setLineDash([]);
+  }
+  pctx.restore();
+}
+
+/* ============================================================ episode state machine (P4 + P8) */
+let state = null, prevState = null, inFlight = false, paused = false;
+let mode = 'swm', nDrones = 3, autoLoop = true, epIdx = 1;
+let acc = 0, lastT = 0, seed = BASE_SEED;
+const curPos = [], prevPos = [];                   // per-target xyz for interpolation
+for (let i = 0; i < MAXD; i++) { curPos.push(new THREE.Vector3()); prevPos.push(new THREE.Vector3()); }
+
+function captureTargets() {
+  const tgs = (state && state.gt && state.gt.targets) ||
+              (state && state.gt ? [state.gt] : []);
+  return tgs;
+}
+function onState(res) {
+  prevState = state; state = res;
+  const tgs = captureTargets();
+  for (let i = 0; i < MAXD; i++) {
+    prevPos[i].copy(curPos[i]);
+    if (i < tgs.length) enuXyz(tgs[i].pos[0], tgs[i].pos[1], tgs[i].pos[2], curPos[i]);
+  }
+  if (prevState === null) for (let i = 0; i < MAXD; i++) prevPos[i].copy(curPos[i]);
+  const tgs2 = tgs;
+  for (let i = 0; i < tgs2.length; i++) {
+    enuXyz(tgs2[i].pos[0], tgs2[i].pos[1], tgs2[i].pos[2], _v);
+    trailPush(drones[i], _v.x, _v.y, _v.z);
+  }
+  ppiPush(res.obs);
+  updateHUD(res);
+  if (res.terminated || res.truncated) episodeEnded(res);
+}
+function clearEpisodeVisuals() {
+  for (const d of drones) { trailClear(d); }
+  blips.length = 0;
+}
+async function resetEpisode(newSeed) {
+  if (newSeed !== undefined) seed = newSeed;
+  const body = mode === 'fly'
+    ? {scenario: 'approach', seed, duration_s: 600, autopilot: false, n_drones: nDrones}
+    : mode === 'solo'
+    ? {scenario: 'approach', seed, duration_s: 20, autopilot: true, n_drones: 1}
+    : {scenario: 'approach,approach,orbit,serpentine', seed, duration_s: 20,
+       autopilot: true, n_drones: nDrones};
+  const res = await api('/api/reset', body);
+  clearEpisodeVisuals();
+  prevPos.forEach(p => p.set(0, 0, 0)); curPos.forEach(p => p.set(0, 0, 0));
+  state = null; prevState = null; acc = 0;
+  onState(res);
+  $('mode').textContent = mode === 'fly' ? `Fly · drone 1 (fleet auto)` :
+                          mode === 'solo' ? 'Solo auto' : `Swarm ×${nDrones}`;
+  $('seedp').textContent = seed; $('ep').textContent = epIdx;
+  $('dur').textContent = (res.duration_s ?? 20) + 's';
+}
+function episodeEnded(res) {
+  if (mode === 'fly') { toast('Flight over — click Restart or pick a mode', 3600); return; }
+  if (autoLoop) {
+    epIdx += 1;
+    toast(`Episode ${epIdx} — new fleet (seed ${seed + 1})`, 1800);
+    setTimeout(() => { if (apiOK && !paused) resetEpisode(seed + 1).catch(console.error); }, 900);
+  } else {
+    toast('Episode complete — click Restart', 3200);
+  }
+}
+/* ============================================================ stepping (P4) */
+function stepOnce() {
+  if (!state || inFlight || paused || !apiOK) return;
+  const n = Math.min(8, Math.max(1, Math.floor(acc / STEP_MS)));
+  if (n <= 0) return;
+  inFlight = true;
+  const act = (mode === 'fly') ? currentAction() : null;
+  api('/api/step', {action: act, steps: n})
+    .then(res => { acc -= STEP_MS * (res.steps_done || n); onState(res); })
+    .catch(err => { console.error(err); apiOK = false; showBanner(); })
+    .finally(() => { inFlight = false; });
+}
+
+/* ============================================================ cameras (P3, Chase default) */
+const CAMS = ['Chase', 'Orbit', 'Tower', 'Top']; let camI = 0;
+const chasePos = new THREE.Vector3(700, 460, 760), chaseTgt = new THREE.Vector3();
+const _des = new THREE.Vector3(), _look = new THREE.Vector3(), _dir = new THREE.Vector3();
+_dir.set(0, 0, -1);
+function focusState() {
+  const tgs = captureTargets();
+  const tg = tgs[0];
+  const vel = tg ? tg.vel : [0, 0, 0];
+  return {pos: rendV[0], speed: Math.hypot(vel[0], vel[1], vel[2]), vel};
+}
+function updateCamera(dtFrame) {
+  const c = CAMS[camI], f = focusState();
+  if (c === 'Chase') {
+    controls.enabled = false;
+    if (f.speed > 2) {                       // follow the velocity vector
+      _dir.set(f.vel[0], 0, -f.vel[1]);
+      if (_dir.lengthSq() > 1e-6) _dir.normalize();
+    }
+    _des.copy(f.pos).addScaledVector(_dir, -310); _des.y = Math.max(40, f.pos.y + 120);
+    _look.copy(f.pos).addScaledVector(_dir, f.speed * 0.8);
+    const a = 1 - Math.exp(-3 * dtFrame);
+    chasePos.lerp(_des, a); chaseTgt.lerp(_look, a);
+    camera.up.set(0, 1, 0);
+    camera.position.copy(chasePos); camera.lookAt(chaseTgt);
+  } else if (c === 'Orbit') {
+    controls.enabled = true;
+    controls.target.lerp(f.pos, 0.08); controls.update();
+  } else if (c === 'Tower') {                // the sensor operator's frame
+    controls.enabled = false;
+    camera.up.set(0, 1, 0);
+    camera.position.set(0, 26, 0); camera.lookAt(f.pos);
+  } else {                                   // Top: tactical north-up
+    controls.enabled = false;
+    camera.up.set(0, 0, -1);
+    camera.position.set(f.pos.x, 3400, f.pos.z + 0.01);
+    camera.lookAt(f.pos.x, 0, f.pos.z);
+  }
+}
+function cycleCam() {
+  camI = (camI + 1) % CAMS.length; $('cam').textContent = CAMS[camI];
+  toast('Camera: ' + CAMS[camI], 1100);
+}
+
+/* ============================================================ input: keys, joystick, click-to-fly (P10) */
+const keys = {};
+const joy = {x: 0, y: 0, active: false};
+addEventListener('keydown', ev => {
+  if (ev.target && ev.target.tagName === 'INPUT') return;
+  const k = ev.key.toLowerCase();
+  if (k === ' ') { ev.preventDefault(); togglePause(); return; }
+  if (k === 'c') { cycleCam(); return; }
+  if (k === 'g') { toggleVolumes(); return; }
+  if (k === 'p') { togglePPI(); return; }
+  if (k === 't') { toggleScale(); return; }
+  if ('wasdqe'.includes(k) && mode === 'fly') { keys[k] = true; ev.preventDefault(); }
+});
+addEventListener('keyup', ev => { const k = ev.key.toLowerCase(); if (k in keys) keys[k] = false; });
+
+const _act = [0, 0, 0];
+function currentAction() {
+  let e = 0, n = 0, u = 0;
+  if (keys.w) n += 1; if (keys.s) n -= 1;
+  if (keys.d) e += 1; if (keys.a) e -= 1;
+  if (keys.e) u += 1; if (keys.q) u -= 1;
+  if (joy.active) { e += joy.x; n -= joy.y; }
+  const L = Math.hypot(e, n, u), m = L > 1 ? 1 / L : 1;
+  _act[0] = e * m * ACC_MAX; _act[1] = n * m * ACC_MAX; _act[2] = u * m * ACC_MAX;
+  return _act;
+}
+
+{ // virtual joystick
+  const joyEl = $('joy'), stick = $('stick');
+  const set = ev => {
+    const r = joyEl.getBoundingClientRect();
+    let dx = (ev.clientX - (r.left + r.width / 2)) / (r.width / 2);
+    let dy = (ev.clientY - (r.top + r.height / 2)) / (r.height / 2);
+    const L = Math.hypot(dx, dy); if (L > 1) { dx /= L; dy /= L; }
+    joy.x = dx; joy.y = dy; joy.active = true;
+    stick.style.transform = `translate(${dx * 38}px,${dy * 38}px)`;
+  };
+  joyEl.addEventListener('pointerdown', ev => { joyEl.setPointerCapture(ev.pointerId); set(ev); });
+  joyEl.addEventListener('pointermove', ev => { if (joy.active) set(ev); });
+  const end = () => { joy.active = false; joy.x = joy.y = 0; stick.style.transform = ''; };
+  joyEl.addEventListener('pointerup', end); joyEl.addEventListener('pointercancel', end);
+}
+
+{ // click-to-fly: a clean click (not an orbit drag) takes the stick
+  let px = 0, py = 0, pt = 0;
+  canvas.addEventListener('pointerdown', ev => { px = ev.clientX; py = ev.clientY; pt = performance.now(); });
+  canvas.addEventListener('pointerup', ev => {
+    const moved = Math.hypot(ev.clientX - px, ev.clientY - py);
+    if (moved < 6 && performance.now() - pt < 350 && mode !== 'fly' && apiOK) {
+      setMode('fly');
+      toast('You have the stick — WASD move · Q/E down/up · joystick bottom-left. The fleet keeps its autopilot.', 4200);
+    }
+    canvas.focus();
   });
-  const vel0=fleet[0]&&(state?fleetOf(state.gt)[0].vel:null)||[0,0,0];
-  tickCamera(dt, fleet.map(t=>to3(t.pos)), [vel0]);
-  drawPPI(now, (state?fleetOf(state.gt):[]));
-  controls.update();
-  const w=innerWidth,h=innerHeight;
-  if(canvas.width!==w*devicePixelRatio || canvas.height!==h*devicePixelRatio){ renderer.setSize(w,h,false); camera.aspect=w/h; camera.updateProjectionMatrix(); }
-  renderer.render(scene,camera);
-  frames++; if(now-last>1000){ document.getElementById('fps').textContent=Math.round(frames*1000/(now-last)); frames=0; last=now; }
 }
-window.addEventListener('resize',()=>{ renderer.setSize(innerWidth,innerHeight,false); camera.aspect=innerWidth/innerHeight; camera.updateProjectionMatrix(); drones.forEach(d=>{ if(d.line2) d.line2.material.resolution.set(innerWidth,innerHeight); }); });
-ensureDrones(1);
-anim();
-showMsg('Pick Auto / Swarm / Manual then Launch — 3D shows truth, the PPI shows what the sensors see', 4200);
+
+/* ============================================================ HUD + toggles */
+function updateHUD(res) {
+  $('t').textContent = res.gt.t.toFixed(1) + 's';
+  const o = res.obs, r = o.radar.n | 0, e = o.eo.n | 0, f = o.rf.n | 0;
+  $('ndets').textContent = r + e + f;
+  $('r').textContent = r; $('e').textContent = e; $('f').textContent = f;
+  const tgs = res.gt.targets || [res.gt];
+  let html = '';
+  tgs.forEach((tg, i) => {
+    const idx = tg.idx ?? i;
+    html += `<tr><td><span class="dot" style="background:${DCSS[idx % 4]}"></span></td>` +
+      `<td>D${idx + 1}${mode === 'fly' && idx === 0 ? ' <b style="color:#4ade80">YOU</b>' : ''}</td>` +
+      `<td>${tg.behaviour || res.gt.scenario || '—'}</td>` +
+      `<td>${(tg.range_m / 1000).toFixed(2)} km</td>` +
+      `<td>${tg.az_deg.toFixed(0)}°</td>` +
+      `<td>${tg.pos[2].toFixed(0)} m</td>` +
+      `<td>${tg.tx_on ? 'on' : '—'}</td></tr>`;
+  });
+  $('fleetb').innerHTML = html;
+}
+function togglePause() {
+  paused = !paused;
+  $('pause').textContent = paused ? '▶ Resume (Space)' : '⏸ Pause (Space)';
+  $('live').style.color = paused ? '#fbbf24' : '#bbf7d0';
+}
+function toggleScale() {
+  SCALE = SCALE === 40 ? 1 : 40;
+  $('scale').textContent = SCALE === 40 ? 'Scale: 40×' : 'Scale: real 0.5 m';
+  for (const d of drones) d.group.scale.setScalar(SCALE);
+  toast(SCALE === 40 ? 'Drones at 40× — visible, not honest' : 'Real scale 0.5 m — honest screenshots', 2000);
+}
+function toggleVolumes() { volumes.visible = !volumes.visible; $('volumes').classList.toggle('on', volumes.visible); }
+function togglePPI() {
+  const on = ppi.style.display !== 'none';
+  ppi.style.display = on ? 'none' : 'block';
+  $('ppileg').style.display = on ? 'none' : 'block';
+  $('ppib').classList.toggle('on', !on);
+}
+async function doExport(fmt) {
+  try {
+    const r = await fetch('/api/export', {method: 'POST',
+      headers: {'Content-Type': 'application/json'}, body: JSON.stringify({format: fmt})});
+    const b = await r.blob();
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(b);
+    a.download = 'skygym_episode.' + fmt; a.click(); URL.revokeObjectURL(a.href);
+    toast('Exported ' + fmt.toUpperCase() + ' — one row per target per tick', 2400);
+  } catch (e) { toast('Export failed — server unreachable'); }
+}
+$('excsv').onclick = () => doExport('csv');
+$('exjsonl').onclick = () => doExport('jsonl');
+$('pause').onclick = togglePause;
+$('scale').onclick = toggleScale;
+$('volumes').onclick = toggleVolumes;
+$('ppib').onclick = togglePPI;
+$('loopb').onclick = () => { autoLoop = !autoLoop; $('loopb').classList.toggle('on', autoLoop); };
+$('restart').onclick = () => { epIdx = 1; resetEpisode().catch(console.error); };
+document.querySelectorAll('.non').forEach(b => b.onclick = () => {
+  document.querySelectorAll('.non').forEach(x => x.classList.remove('on'));
+  b.classList.add('on'); nDrones = +b.dataset.n;
+  if (mode !== 'solo') setMode(mode === 'fly' ? 'fly' : 'swm');
+});
+
+function setMode(m) {
+  mode = m; epIdx = 1;
+  $('m-swm').className = m === 'swm' ? 'primary' : '';
+  $('m-solo').className = m === 'solo' ? 'primary' : '';
+  $('m-fly').className = m === 'fly' ? 'primary' : '';
+  $('hint').innerHTML = m === 'fly'
+    ? '<b>WASD</b> move · <b>Q/E</b> down/up · <b>C</b> camera · <b>Space</b> pause · pick <b>Swarm</b> to hand back control'
+    : '<b>Click the canvas</b> to fly drone 1 · <b>C</b> camera · <b>G</b> volumes · <b>P</b> PPI · <b>Space</b> pause';
+  resetEpisode(BASE_SEED).catch(console.error);
+}
+$('m-swm').onclick = () => setMode('swm');
+$('m-solo').onclick = () => setMode('solo');
+$('m-fly').onclick = () => { setMode('fly'); toast('You have the stick — WASD move · Q/E down/up', 3200); };
+
+/* ============================================================ render loop (P4: fixed-step sim, free-running render) */
+const rendV = []; for (let i = 0; i < MAXD; i++) rendV.push(new THREE.Vector3());
+let lastFrame = performance.now(), fpsN = 0, fpsT = 0;
+function frame(now) {
+  requestAnimationFrame(frame);
+  const dtFrame = Math.min(0.1, (now - lastFrame) / 1000); lastFrame = now;
+  if (apiOK && !paused) { acc += dtFrame * 1000; stepOnce(); }
+  const alpha = Math.min(1, Math.max(0, acc / STEP_MS));
+  const tgs = captureTargets();
+  for (let i = 0; i < MAXD; i++) {
+    const d = drones[i], live = state && i < tgs.length;
+    d.group.visible = !!live; d.beam.visible = !!live;
+    if (live) {
+      rendV[i].lerpVectors(prevPos[i], curPos[i], alpha);
+      d.group.position.copy(rendV[i]);
+      const arr = d.beam.geometry.attributes.position.array;
+      arr[0] = rendV[i].x; arr[1] = rendV[i].y; arr[2] = rendV[i].z;
+      arr[3] = rendV[i].x; arr[4] = 0; arr[5] = rendV[i].z;
+      d.beam.geometry.attributes.position.needsUpdate = true;
+    }
+  }
+  if (state) { drawDets(state.obs); updateLabels(tgs, rendV); updateCamera(dtFrame); }
+  if (ppi.style.display !== 'none') drawPPI(now / 1000);
+  fpsN++; fpsT += dtFrame;
+  if (fpsT >= 0.5) { $('fps').textContent = Math.round(fpsN / fpsT); fpsN = 0; fpsT = 0; }
+  renderer.render(scene, camera);
+}
+addEventListener('resize', () => {
+  camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+});
+renderer.setSize(innerWidth, innerHeight);
+
+/* ============================================================ boot (P8: alive at t=0) */
+(async function boot() {
+  try {
+    if (location.protocol === 'file:') throw new Error('file:// — no server');
+    await api('/api/status');
+    apiOK = true;
+    await resetEpisode(BASE_SEED);
+    requestAnimationFrame(frame);
+    toast('Swarm launched — 3 drones inbound. Click the canvas any time to take the stick.', 4200);
+  } catch (e) { showBanner(); }
+})();
 </script>
 </body>
 </html>

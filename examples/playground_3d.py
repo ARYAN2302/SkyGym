@@ -1,14 +1,15 @@
 #!/usr/bin/env python3
-"""SkyGym 3D Playground v2 — single drone or swarm, 3 sensors, live PPI.
+"""SkyGym 3D Playground v3 — swarm-native, click-to-fly, live PPI.
 
 Core stays Python: skygym/env.py + multidrone.py -> flight.py -> sensors/*.
 JS only renders & sends accel. Same Gymnasium contract: obs = corrupted
 dets, info["gt"] = witness channel.
 
-Modes:
-  Auto 20s / 40s  - autopilot single drone (data mode)
+Modes (all reachable from the v3 client, swarm is the boot default):
   Swarm 20s       - MultiDroneEnv fleet (n_drones), autopilot, data mode
-  Manual infinite - control mode, you fly drone 1 (WASD/QE/joystick), <= 600s
+  Solo auto       - autopilot single drone (data mode)
+  Fly             - control mode: you fly drone 1 (WASD/QE/joystick);
+                    in a swarm the fleet keeps its autopilot (drone 1 only)
 
 Usage: python examples/playground_3d.py  ->  http://localhost:8000/examples/playground_3d.html
 """
@@ -44,12 +45,16 @@ def _get_env(mode: str):
     return _env
 
 
-def _get_multi_env(n: int):
+def _get_multi_env(n: int, autopilot: bool = True):
     global _menv, _active
     max_d = max(24, 12 * n)
-    if _menv is None or getattr(_menv, "_cfg_n", None) != (n, max_d):
-        _menv = MultiDroneEnv(EnvCfg(mode="data", max_dets_per_sensor=max_d))
-        _menv._cfg_n = (n, max_d)
+    key = (n, max_d, autopilot)
+    if _menv is None or getattr(_menv, "_cfg_n", None) != key:
+        # data = whole fleet on autopilot; control = YOU fly drone 1 (the
+        # fleet keeps its autopilot - MultiDroneEnv.step handles k == 0).
+        _menv = MultiDroneEnv(EnvCfg(mode="data" if autopilot else "control",
+                                     max_dets_per_sensor=max_d))
+        _menv._cfg_n = key
     _active = "multi"
     return _menv
 
@@ -128,8 +133,8 @@ class H(http.server.SimpleHTTPRequestHandler):
             with _lock:
                 _cur_dur, _cur_sc, _cur_seed, _cur_n = dur, sc, seed, n
                 _rec = []
-                if n > 1 and autopilot:
-                    env = _get_multi_env(n)
+                if n > 1:
+                    env = _get_multi_env(n, autopilot)
                     obs, info = env.reset(seed=seed, options={
                         "n_drones": n, "duration_s": dur,
                         "noise_scale": float(data.get("noise_scale", 1.0)),
@@ -170,7 +175,9 @@ class H(http.server.SimpleHTTPRequestHandler):
                 obs_s, gt, te, tr, frames = None, None, False, False, []
                 for _i in range(n_steps):
                     if _active == "multi":
-                        obs, _, te, tr, info = _menv.step(None)
+                        # control-mode multi: action drives drone 1 only;
+                        # data-mode multi ignores it (pure autopilot fleet)
+                        obs, _, te, tr, info = _menv.step(act)
                     else:
                         env = _get_env(_env_mode or "control")
                         obs, _, te, tr, info = env.step(act)
@@ -290,7 +297,7 @@ class H(http.server.SimpleHTTPRequestHandler):
 
 
 def main():
-    ap = argparse.ArgumentParser(description="SkyGym 3D Playground v2")
+    ap = argparse.ArgumentParser(description="SkyGym 3D Playground v3")
     ap.add_argument("--port", type=int, default=8000)
     ap.add_argument("--host", default="127.0.0.1")
     ap.add_argument("--no-browser", action="store_true")
@@ -301,7 +308,7 @@ def main():
     socketserver.TCPServer.allow_reuse_address = True
     with socketserver.TCPServer((args.host, args.port), h) as httpd:
         url = f"http://{args.host}:{args.port}/examples/playground_3d.html"
-        print("== SkyGym 3D Playground v2 == Auto 20s/40s | Swarm (2-4 drones) | Manual infinite")
+        print("== SkyGym 3D Playground v3 == Swarm (2-4 drones) | Solo auto | Fly (click canvas)")
         print(f"Serving {os.path.abspath(ROOT)} at {url}")
         print("Core: skygym/env.py + multidrone.py -> flight.py -> sensors/*")
         if not args.no_browser:

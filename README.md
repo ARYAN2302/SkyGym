@@ -72,11 +72,7 @@ python examples/run_multidrone.py --n 3 --episodes 4 --duration 20          # sp
 python examples/run_multidrone.py --n 2 --episodes 3 --duration 60 \
        --mix approach,approach --radius 300,320                              # collision course
 
-# 6) fly it yourself (terminal with TTY)
-python examples/interactive.py --scenario approach
-python examples/interactive.py --autopilot --scenario orbit
-
-# 7) 3D playground v2 (Three.js + PPI scope + swarm + chase cam)
+# 6) 3D playground v2 (Three.js + PPI scope + swarm + click-to-fly)
 python examples/playground_3d.py                # → http://localhost:8000/examples/playground_3d.html
 ```
 
@@ -109,9 +105,9 @@ examples/
   evaluate.py        batch evaluation of the tracking baseline
   run_stonesoup.py   single-episode tracking benchmark CLI
   run_multidrone.py  multi-drone fleet benchmark CLI (CSV + identity switches)
-  interactive.py     terminal flight control
   playground_3d.py   3D playground v2 server (single + swarm bridge)
   playground_3d.html Three.js scene · PPI scope · chase cam · fleet HUD
+  (all tracker examples import the single standard path: skygym.stone_soup)
 docs/
   PLAYGROUND_RESEARCH.md  design study: how to build an outstanding playground
 ```
@@ -257,29 +253,45 @@ Rules enforced in code, not docs:
 | Tracker honesty | Stone Soup bridge: track initiated, bounded RMSE, sane ID readout |
 | S5 fleet | poll ≡ poll_multi · anonymous dets scale with fleet · deterministic spawn · multi grading sane · recorder per-target labels |
 
-## 3D playground v2
+## 3D playground v3
 
 `python examples/playground_3d.py` → http://localhost:8000/examples/playground_3d.html
 
-The playground is a real instrument panel, not a tech demo. The JS side only
-renders and sends acceleration commands — physics, sensors and recording stay
-in Python under the untouched Gymnasium contract. Modes: **Auto 20 s / 40 s**
-(autopilot), **Swarm 20 s** (2–4 drones via `MultiDroneEnv`), **Manual ∞**
-(WASD/QE + joystick, flies drone 1).
+The playground is a live instrument, not a menu-driven demo: it **boots
+straight into a running 3-drone swarm** (P8 — alive at t = 0, no dead scene,
+no mode hunt) and makes the drones impossible to lose (P9 — every drone
+carries a screen-space label with range readout that clamps to the screen
+edge as a pointing arrow when off-camera). The JS side only renders and sends
+acceleration commands — physics, sensors and recording stay in Python under
+the untouched Gymnasium contract.
 
-- **Two layers, never mixed** — the 3D scene renders truth (fleet, trails,
-  sensor-volume wireframes at the real 5/6/8 km sensor ranges); the
-  **PPI radar scope** (bottom-left) renders measurements: north-up polar,
-  2 km range rings, rotating sweep, afterglow blips, clutter in amber,
-  RF bearings as rim arcs, per-drone truth ghosts. Watching the PPI is the
-  fastest way to understand why RF cannot give range.
-- **Camera grammar** (`C`) — Orbit · Chase (damped velocity-vector follow with
-  look-ahead) · Tower (the sensor operator's frame) · Top (tactical north-up).
-- **Swarm-native HUD** — per-drone colour, trail, PPI ghost and a witness
-  fleet table (behaviour / range / az / alt) that never shifts layout.
-- **Smooth motion** — fixed-step accumulator with catch-up batching and
-  render-time interpolation; instanced detection pools (no per-frame
-  allocation); scale toggle 40× / real 0.5 m for honest screenshots.
+- **Click-to-fly (P10)** — clicking the canvas takes the stick of drone 1
+  *while the fleet keeps its autopilot* (`MultiDroneEnv` control mode:
+  action drives k = 0 only). WASD north/south/east/west, Q/E down/up,
+  on-screen joystick; the HUD marks your row **YOU**. Press **Swarm** to
+  hand control back.
+- **Modes** — Swarm (autopilot fleet, auto-looping episodes with a fresh
+  seed each time), Solo auto (single drone), Fly it (manual, 600 s).
+- **Two layers, never mixed (P1)** — the 3D scene renders truth (fleet,
+  trails, sensor-volume wireframes at the real 3/5/8 km sensor ranges); the
+  **PPI radar scope** renders measurements: north-up polar, 2 km range
+  rings, rotating sweep, afterglow blips, clutter in amber, RF bearings as
+  rim arcs (RF never gives range), per-drone dashed truth ghosts. The gap
+  between the layers is the research problem, made visible.
+- **Camera grammar (P3)** — **Chase (default**; damped velocity-vector
+  follow with look-ahead) · Orbit · Tower (the sensor operator's frame) ·
+  Top (tactical north-up). One keypress (`C`) apart, frame-rate-independent
+  smoothing `α = 1 − exp(−λ·dt)`.
+- **Honest failure** — open the HTML from disk (no server) and you get an
+  explicit banner with the exact command to run, instead of a silently dead
+  page.
+- **Swarm-native HUD (P7)** — per-drone colour, trail, PPI ghost and a
+  witness fleet table (behaviour / range / az / alt / TX) that never shifts
+  layout.
+- **Smooth motion (P4/P5)** — fixed-step accumulator with catch-up batching
+  and render-time interpolation; instanced detection pools and bearing-ray
+  segments (zero per-frame allocation); scale toggle 40× / real 0.5 m for
+  honest screenshots.
 - **One-click export** — JSONL or CSV; swarm CSV writes one labelled row per
   target per tick.
 
@@ -307,6 +319,13 @@ criteria for the next iteration — is written up in
 
 ## Changelog
 
+- **v0.3.1** — playground v3 client rebuilt from scratch: boots into a live
+  3-drone swarm (no dead scene), every drone carries an always-on screen-space
+  label with edge-clamped off-screen arrows and range readout, click-to-fly
+  (click canvas = manual control of drone 1), Chase is the default camera, and
+  an explicit banner appears if the API is unreachable (no more silently dead
+  page). Removed the terminal `interactive.py` example (superseded by the
+  playground).
 - **v0.3.0** — S5 multi-drone: `MultiDroneEnv` + `Sensor.poll_multi()`
   (anonymous fleet detections), `run_episode_multi` with Hungarian grading,
   identity-switch metric; `examples/run_multidrone.py` benchmark CLI;
@@ -323,7 +342,7 @@ criteria for the next iteration — is written up in
 - **v0.1.1** — radar Poisson clutter drawn every scan (was only drawn when
   the target was beyond max range, contradicting the docstring).
 - **v0.1.0** — S1–S4: env + sensors + wrappers + dataset builder +
-  interactive control + 3D playground.
+  terminal interactive example + 3D playground.
 
 ## Status
 
