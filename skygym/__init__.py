@@ -10,7 +10,7 @@ from .multidrone import MultiDroneEnv, sample_fleet
 from .sensors import Detection, RadarSensor, EOSensor, RFSensor
 from . import world
 
-__version__ = "0.3.1"
+__version__ = "0.3.2"
 
 __all__ = [
     "SkyGymEnv", "MultiDroneEnv", "sample_fleet",

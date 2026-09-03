@@ -307,7 +307,9 @@ def run_episode(env, seed: int, options: dict | None = None,
         verrs = []
         for r in tgt:
             _, gv = gt_at(r[0])
-            verrs.append(float(np.linalg.norm(np.array(r[4:7]) - gv)))
+            # r[5:8] = (est_vel_e, est_vel_n, est_vel_u) — r[4:7] would
+            # wrongly mix altitude into the velocity error.
+            verrs.append(float(np.linalg.norm(np.array(r[5:8]) - gv)))
         summary.update({
             "pct_of_episode_tracked": round(
                 100.0 * len({round(r[0], 1) for r in tgt}) / len(frames), 1),
