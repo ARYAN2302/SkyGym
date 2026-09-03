@@ -319,13 +319,6 @@ criteria for the next iteration — is written up in
 
 ## Changelog
 
-- **v0.3.2** — Stage-1 learned-model launch kit + vel_rmse fix: new `stage1/`
-  ships the full learned-vs-EKF pipeline as four path-portable scripts
-  (`SKYGYM_PROJECT_ROOT` env var) plus `STAGE1_RUNBOOK.md`: corpus builder
-  (480 seed-blocked episodes → train/val/test JSONL, truth-free features),
-  Rung-1 XGBoost threat-ID + Rung-2 GRU multi-task training, held-out-test
-  scorecard eval, and a bench tool. Fixed `vel_rmse_mps` reading `r[4:7]`
-  (altitude leaked into the velocity error → ~113 m/s nonsense).
 - **v0.3.1** — playground v3 client rebuilt from scratch: boots into a live
   3-drone swarm (no dead scene), every drone carries an always-on screen-space
   label with edge-clamped off-screen arrows and range readout, click-to-fly
