@@ -18,7 +18,8 @@ import numpy as np
 from gymnasium import spaces
 
 from .config import EnvCfg, ScenarioCfg, CLASSES, SensorRig, FlightCfg
-from .flight import FlightState, step_plant, build_params, BEHAVIOURS
+from .flight import (FlightState, step_plant, build_params, BEHAVIOURS,
+                     QuadAttitude, sticks_to_accel, heading_from_vel)
 from .sensors import SENSORS, Detection
 from . import world
 
@@ -51,12 +52,18 @@ class SkyGymEnv(gym.Env):
             })
             for s in ("radar", "eo", "rf")
         })
-        self.action_space = spaces.Box(
-            low=-self.cfg.flight.amax_mps2, high=self.cfg.flight.amax_mps2,
-            shape=(3,), dtype=np.float32)
+        if self.cfg.mode == "control":
+            # pilot sticks [-1,1]^4: pitch / roll / yaw-rate / climb
+            self.action_space = spaces.Box(low=-1.0, high=1.0,
+                                           shape=(4,), dtype=np.float32)
+        else:
+            self.action_space = spaces.Box(
+                low=-self.cfg.flight.amax_mps2, high=self.cfg.flight.amax_mps2,
+                shape=(3,), dtype=np.float32)
 
         self._scenario: ScenarioCfg | None = None
         self._state: FlightState | None = None
+        self._quad: QuadAttitude | None = None   # attitude (control mode only)
         self._params: dict = {}
         self._sensors: dict[str, Any] = {}
         self._rng: np.random.Generator | None = None
@@ -80,7 +87,7 @@ class SkyGymEnv(gym.Env):
         st = self._state
         site = np.asarray(self.cfg.rig.site_enu, dtype=float)
         az, el, rng_m = world.cartesian_to_spherical(st.pos - site)
-        return {
+        gt = {
             "t": st.t,
             "pos": st.pos.copy(),
             "vel": st.vel.copy(),
@@ -94,6 +101,9 @@ class SkyGymEnv(gym.Env):
             "episode_id": self._episode_id,
             "steps": self._steps,
         }
+        if self._quad is not None:
+            gt["attitude"] = self._quad.as_dict()
+        return gt
 
     # ------------------------------------------------------------------ #
     def reset(self, *, seed: int | None = None, options: dict | None = None):
@@ -122,6 +132,9 @@ class SkyGymEnv(gym.Env):
         # flight state + behaviour params
         self._state = FlightState(np.zeros(3), np.zeros(3))
         self._params = build_params(sc, self._state, self._rng)
+        # manual-flight attitude: face the initial velocity (control mode only)
+        self._quad = (QuadAttitude(heading_from_vel(self._state.vel))
+                      if self.cfg.mode == "control" else None)
 
         # sensors (fresh rngs derived from the master seed for stream isolation)
         rig: SensorRig = self.cfg.rig
@@ -160,19 +173,27 @@ class SkyGymEnv(gym.Env):
     def step(self, action: np.ndarray | None = None):
         cfg: FlightCfg = self.cfg.flight
         sc: ScenarioCfg = self._scenario
-
-        # --- control selection -----------------------------------------
-        if action is None or self.cfg.mode == "data":
-            behaviour = BEHAVIOURS[sc.name]
-            a_cmd = behaviour(self._state, self._params, cfg)
-        else:
-            a_cmd = np.clip(np.asarray(action, dtype=float),
-                            -cfg.amax_mps2, cfg.amax_mps2)
-
-        # --- physics: substeps until the next env tick ------------------
         n_sub = max(1, int(round(self.cfg.dt / cfg.dt_phys)))
-        for _ in range(n_sub):
-            step_plant(self._state, a_cmd, cfg)
+
+        # --- control selection + physics -------------------------------
+        stick_mode = (action is not None and self.cfg.mode == "control"
+                      and self._quad is not None
+                      and np.asarray(action, dtype=float).shape == (4,))
+        if stick_mode:
+            # angle-mode quad: sticks -> attitude lag -> ENU accel per substep
+            act = np.asarray(action, dtype=float)
+            for _ in range(n_sub):
+                a_cmd = sticks_to_accel(self._quad, act, self._state.vel,
+                                        cfg, self.cfg.quad)
+                step_plant(self._state, a_cmd, cfg)
+        else:
+            if action is None or self.cfg.mode == "data":
+                a_cmd = BEHAVIOURS[sc.name](self._state, self._params, cfg)
+            else:
+                a_cmd = np.clip(np.asarray(action, dtype=float).reshape(-1)[:3],
+                                -cfg.amax_mps2, cfg.amax_mps2)
+            for _ in range(n_sub):
+                step_plant(self._state, a_cmd, cfg)
 
         self._steps += 1
 

@@ -72,7 +72,7 @@ python examples/run_multidrone.py --n 3 --episodes 4 --duration 20          # sp
 python examples/run_multidrone.py --n 2 --episodes 3 --duration 60 \
        --mix approach,approach --radius 300,320                              # collision course
 
-# 6) 3D playground v2 (Three.js + PPI scope + swarm + click-to-fly)
+# 6) 3D playground (Three.js · RC-stick quad flight · FPV · swarm · PPI scope)
 python examples/playground_3d.py                # → http://localhost:8000/examples/playground_3d.html
 ```
 
@@ -105,8 +105,8 @@ examples/
   evaluate.py        batch evaluation of the tracking baseline
   run_stonesoup.py   single-episode tracking benchmark CLI
   run_multidrone.py  multi-drone fleet benchmark CLI (CSV + identity switches)
-  playground_3d.py   3D playground v2 server (single + swarm bridge)
-  playground_3d.html Three.js scene · PPI scope · chase cam · fleet HUD
+  playground_3d.py   3D playground v4 server (single + swarm bridge)
+  playground_3d.html Three.js scene · RC-stick flight · FPV · PPI scope · fleet HUD
   (all tracker examples import the single standard path: skygym.stone_soup)
 docs/
   PLAYGROUND_RESEARCH.md  design study: how to build an outstanding playground
@@ -253,7 +253,7 @@ Rules enforced in code, not docs:
 | Tracker honesty | Stone Soup bridge: track initiated, bounded RMSE, sane ID readout |
 | S5 fleet | poll ≡ poll_multi · anonymous dets scale with fleet · deterministic spawn · multi grading sane · recorder per-target labels |
 
-## 3D playground v3
+## 3D playground v4
 
 `python examples/playground_3d.py` → http://localhost:8000/examples/playground_3d.html
 
@@ -261,15 +261,23 @@ The playground is a live instrument, not a menu-driven demo: it **boots
 straight into a running 3-drone swarm** (P8 — alive at t = 0, no dead scene,
 no mode hunt) and makes the drones impossible to lose (P9 — every drone
 carries a screen-space label with range readout that clamps to the screen
-edge as a pointing arrow when off-camera). The JS side only renders and sends
-acceleration commands — physics, sensors and recording stay in Python under
-the untouched Gymnasium contract.
+edge as a pointing arrow when off-camera). Physics, sensors and recording
+stay in Python under the Gymnasium contract; the client composes RC sticks.
 
-- **Click-to-fly (P10)** — clicking the canvas takes the stick of drone 1
-  *while the fleet keeps its autopilot* (`MultiDroneEnv` control mode:
-  action drives k = 0 only). WASD north/south/east/west, Q/E down/up,
-  on-screen joystick; the HUD marks your row **YOU**. Press **Swarm** to
-  hand control back.
+- **Real quad flight (v4)** — manual flight is an **angle-mode quadcopter**,
+  not a sliding point: sticks command pitch/roll tilt, yaw rate and climb
+  rate; attitude follows through a first-order lag; tilt becomes
+  acceleration via `g·tan(tilt)` rotated by yaw (`skygym/flight.py`,
+  control mode only — data-mode trajectories and benchmarks are untouched).
+  Keys **W/S** pitch, **A/D** yaw, **Q/E** climb; **gamepad Mode-2** analog
+  sticks (12% deadzone); the drone mesh banks, pitches and spins its props
+  from server-truth attitude, and the fleet table shows live HDG.
+- **Possess any drone + FPV** — click the canvas or press **1–4** to take
+  the stick of drone k *while the rest of the fleet keeps its autopilot*
+  (`MultiDroneEnv.step(action, control_idx=k)`). Camera **C** cycles
+  Chase · **FPV** (nose cam with Pointer-Lock mouse-look, ESC releases,
+  own mesh hidden, crosshair overlay) · Orbit · Tower · Top; Chase and the
+  HUD follow whoever you possess. The HUD marks your row **YOU**.
 - **Modes** — Swarm (autopilot fleet, auto-looping episodes with a fresh
   seed each time), Solo auto (single drone), Fly it (manual, 600 s).
 - **Two layers, never mixed (P1)** — the 3D scene renders truth (fleet,
@@ -319,6 +327,15 @@ criteria for the next iteration — is written up in
 
 ## Changelog
 
+- **v0.4.0** — playground v4: real quadcopter flight. New angle-mode flight
+  controller (`QuadCfg`/`QuadAttitude`/`sticks_to_accel`, control mode only):
+  RC sticks → tilt/yaw-rate/climb-rate commands → first-order attitude lag →
+  `g·tan(tilt)` acceleration in ENU → the same drag/speed-limited plant.
+  Client: possess any drone (keys 1–4, `MultiDroneEnv.step(control_idx=)`),
+  body-frame stick mapping, gamepad Mode-2 with deadzones, FPV nose camera
+  with Pointer-Lock mouse-look + crosshair, realistic X-frame quad mesh with
+  spinning props and server-truth attitude, HDG column/HUD, data-mode
+  benchmark contract byte-identical (no attitude in data-mode gt). 44 tests.
 - **v0.3.1** — playground v3 client rebuilt from scratch: boots into a live
   3-drone swarm (no dead scene), every drone carries an always-on screen-space
   label with edge-clamped off-screen arrows and range readout, click-to-fly

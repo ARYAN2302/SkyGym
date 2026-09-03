@@ -60,6 +60,81 @@ def step_plant(state: FlightState, a_cmd: np.ndarray, cfg: FlightCfg) -> None:
 
 
 # --------------------------------------------------------------------------
+# Angle-mode quadcopter controller (control mode only - data mode untouched)
+# --------------------------------------------------------------------------
+
+G_MPS2 = 9.81
+
+
+class QuadAttitude:
+    """Attitude state of one manually-flown quad (angle-mode stabilisation).
+
+    The pilot's sticks are commands, not direct accelerations:
+      pitch (+1 forward) / roll (+1 right)  -> tilt command (deg, capped)
+      yaw (+1 clockwise)                    -> yaw-rate command (deg/s)
+      climb (+1 up)                         -> climb-rate command (m/s)
+    Tilt and yaw rate follow their commands through a first-order lag (the
+    vehicle's rotational dynamics); horizontal acceleration is g*tan(tilt)
+    rotated into ENU by yaw; vertical is a climb-rate servo. The returned
+    ENU accel is fed to the SAME step_plant, so drag / speed limits /
+    floors are shared with data mode and the trajectory stays physically
+    honest.
+    """
+
+    __slots__ = ("yaw_deg", "tilt_fwd_deg", "tilt_right_deg", "yaw_rate_dps")
+
+    def __init__(self, yaw_deg: float = 0.0):
+        self.yaw_deg = float(yaw_deg) % 360.0
+        self.tilt_fwd_deg = 0.0
+        self.tilt_right_deg = 0.0
+        self.yaw_rate_dps = 0.0
+
+    def as_dict(self) -> dict:
+        return {"yaw_deg": round(self.yaw_deg, 2),
+                "pitch_deg": round(self.tilt_fwd_deg, 2),
+                "roll_deg": round(self.tilt_right_deg, 2)}
+
+
+def heading_from_vel(vel: np.ndarray, default_deg: float = 0.0) -> float:
+    """Azimuth of the velocity vector (deg, 0 = North, clockwise) or default."""
+    e, n = float(vel[0]), float(vel[1])
+    if e * e + n * n < 4.0:        # slower than 2 m/s: keep the default
+        return default_deg
+    return float(np.degrees(np.arctan2(e, n))) % 360.0
+
+
+def sticks_to_accel(att: QuadAttitude, sticks, vel: np.ndarray,
+                    cfg_f: FlightCfg, quad) -> np.ndarray:
+    """One controller tick at dt_phys granularity is NOT needed: the caller
+    integrates per physics substep with dt = cfg_f.dt_phys. Returns the ENU
+    acceleration command for step_plant."""
+    dt = cfg_f.dt_phys
+    pitch = float(np.clip(sticks[0], -1.0, 1.0)) * quad.tilt_max_deg
+    roll = float(np.clip(sticks[1], -1.0, 1.0)) * quad.tilt_max_deg
+    yrate = float(np.clip(sticks[2], -1.0, 1.0)) * quad.yaw_rate_max_dps
+    climb = float(np.clip(sticks[3], -1.0, 1.0)) * quad.vz_max_mps
+
+    # first-order lag toward the commanded attitude
+    a_t = dt / max(quad.tau_tilt_s, 1e-3)
+    att.tilt_fwd_deg += (pitch - att.tilt_fwd_deg) * a_t
+    att.tilt_right_deg += (roll - att.tilt_right_deg) * a_t
+    att.yaw_rate_dps += (yrate - att.yaw_rate_dps) * (dt / max(quad.tau_yaw_s, 1e-3))
+    att.yaw_deg = (att.yaw_deg + att.yaw_rate_dps * dt) % 360.0
+
+    # tilt -> horizontal acceleration, rotated into ENU by yaw (0 = North)
+    yaw = np.radians(att.yaw_deg)
+    fwd = np.array([np.sin(yaw), np.cos(yaw), 0.0])
+    right = np.array([np.cos(yaw), -np.sin(yaw), 0.0])
+    a_h = (np.tan(np.radians(att.tilt_fwd_deg)) * fwd
+           + np.tan(np.radians(att.tilt_right_deg)) * right) * G_MPS2
+
+    # climb-rate servo (Mode-2 throttle feel: release -> level off)
+    a_z = float(np.clip(quad.kp_z * (climb - float(vel[2])),
+                        -cfg_f.amax_mps2, cfg_f.amax_mps2))
+    return clip_accel(a_h + np.array([0.0, 0.0, a_z]), cfg_f)
+
+
+# --------------------------------------------------------------------------
 # Autopilot behaviours: f(state, params, cfg) -> accel command
 # --------------------------------------------------------------------------
 

@@ -1,15 +1,18 @@
 #!/usr/bin/env python3
-"""SkyGym 3D Playground v3 — swarm-native, click-to-fly, live PPI.
+"""SkyGym 3D Playground v4 — swarm-native, RC-stick quad flight, live PPI.
 
 Core stays Python: skygym/env.py + multidrone.py -> flight.py -> sensors/*.
-JS only renders & sends accel. Same Gymnasium contract: obs = corrupted
-dets, info["gt"] = witness channel.
+JS renders and composes RC sticks; the angle-mode quad controller (attitude
+lag, tilt -> acceleration, yaw rate, climb-rate servo) lives in flight.py.
+Same Gymnasium contract: obs = corrupted dets, info["gt"] = witness channel
+(+ attitude of the manually-flown drone, control mode only).
 
-Modes (all reachable from the v3 client, swarm is the boot default):
+Modes (all reachable from the v4 client, swarm is the boot default):
   Swarm 20s       - MultiDroneEnv fleet (n_drones), autopilot, data mode
   Solo auto       - autopilot single drone (data mode)
-  Fly             - control mode: you fly drone 1 (WASD/QE/joystick);
-                    in a swarm the fleet keeps its autopilot (drone 1 only)
+  Fly             - control mode: RC sticks (W/S pitch, A/D yaw, Q/E climb,
+                    gamepad Mode-2, keys 1-4 possess any drone); in a swarm
+                    the fleet keeps its autopilot (one drone is yours)
 
 Usage: python examples/playground_3d.py  ->  http://localhost:8000/examples/playground_3d.html
 """
@@ -99,7 +102,10 @@ def _gt_ser(gt: dict) -> dict:
             "range_m": float(tg["range_m"]),
             "true_class": tg["true_class"], "tx_on": bool(tg["tx_on"]),
             "behaviour": tg["behaviour"],
+            **({"attitude": tg["attitude"]} if "attitude" in tg else {}),
         } for tg in gt["targets"]]
+    if "attitude" in gt:
+        out["attitude"] = gt["attitude"]
     return out
 
 
@@ -166,8 +172,10 @@ class H(http.server.SimpleHTTPRequestHandler):
             if act is not None:
                 try:
                     a = np.asarray(act, dtype=np.float32)
-                    act = a if a.shape == (3,) else None
+                    act = a if a.shape in ((3,), (4,)) else None
                 except Exception: act = None
+            try: ci = int(data.get("control_idx", 0))
+            except Exception: ci = 0
             try: n_steps = int(data.get("steps", 1))
             except Exception: n_steps = 1
             n_steps = int(np.clip(n_steps, 1, 8))
@@ -175,9 +183,9 @@ class H(http.server.SimpleHTTPRequestHandler):
                 obs_s, gt, te, tr, frames = None, None, False, False, []
                 for _i in range(n_steps):
                     if _active == "multi":
-                        # control-mode multi: action drives drone 1 only;
-                        # data-mode multi ignores it (pure autopilot fleet)
-                        obs, _, te, tr, info = _menv.step(act)
+                        # control-mode multi: sticks drive the possessed drone;
+                        # data-mode multi ignores them (pure autopilot fleet)
+                        obs, _, te, tr, info = _menv.step(act, control_idx=ci)
                     else:
                         env = _get_env(_env_mode or "control")
                         obs, _, te, tr, info = env.step(act)
@@ -308,7 +316,7 @@ def main():
     socketserver.TCPServer.allow_reuse_address = True
     with socketserver.TCPServer((args.host, args.port), h) as httpd:
         url = f"http://{args.host}:{args.port}/examples/playground_3d.html"
-        print("== SkyGym 3D Playground v3 == Swarm (2-4 drones) | Solo auto | Fly (click canvas)")
+        print("== SkyGym 3D Playground v4 == Swarm (2-4 drones) | Solo auto | Fly (RC sticks, 1-4 possess, FPV)")
         print(f"Serving {os.path.abspath(ROOT)} at {url}")
         print("Core: skygym/env.py + multidrone.py -> flight.py -> sensors/*")
         if not args.no_browser:

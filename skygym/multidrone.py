@@ -29,7 +29,8 @@ from gymnasium import spaces
 
 from .config import EnvCfg, ScenarioCfg
 from .env import _dets_to_padded  # shared padded-obs helper
-from .flight import FlightState, step_plant, build_params, BEHAVIOURS
+from .flight import (FlightState, step_plant, build_params, BEHAVIOURS,
+                     QuadAttitude, sticks_to_accel, heading_from_vel)
 from .sensors import SENSORS
 from . import world
 
@@ -147,6 +148,8 @@ class MultiDroneEnv(gym.Env):
         self._traj_hist: list[list[np.ndarray]] = []
         self._steps = 0
         self._oob: list[bool] = []
+        self._quads: dict[int, QuadAttitude] = {}   # per-drone attitude (control)
+        self._control_idx = -1
 
     # ------------------------------------------------------------------ #
     def _make_obs(self, sensor_dets: dict[str, list]):
@@ -169,7 +172,7 @@ class MultiDroneEnv(gym.Env):
         targets = []
         for k, (st, sc) in enumerate(zip(self._states, self._fleet)):
             az, el, rng_m = world.cartesian_to_spherical(st.pos - site)
-            targets.append({
+            tg = {
                 "idx": k,
                 "pos": st.pos.copy(),
                 "vel": st.vel.copy(),
@@ -178,7 +181,10 @@ class MultiDroneEnv(gym.Env):
                 "tx_on": sc.tx_on,
                 "behaviour": sc.name,
                 "oob": self._oob[k],
-            })
+            }
+            if k in self._quads:            # manually-flown drones report attitude
+                tg["attitude"] = self._quads[k].as_dict()
+            targets.append(tg)
         st0 = self._states[0]
         return {
             "t": st0.t,
@@ -244,6 +250,11 @@ class MultiDroneEnv(gym.Env):
         self._oob = [False] * len(self._states)
         self._traj_hist = [[st.pos.copy()] for st in self._states]
         self._steps = 0
+        self._quads = {}          # fresh attitude per episode
+        self._control_idx = -1
+        if self.cfg.mode == "control":   # the default possessed drone reports
+            self._quads[0] = QuadAttitude(   # attitude from the first frame
+                heading_from_vel(self._states[0].vel))
 
         positions = [st.pos for st in self._states]
         metas = [self._drone_meta(k) for k in range(len(self._states))]
@@ -263,13 +274,44 @@ class MultiDroneEnv(gym.Env):
         return obs, info
 
     # ------------------------------------------------------------------ #
-    def step(self, action: np.ndarray | None = None):
+    def step(self, action: np.ndarray | None = None,
+             control_idx: int = 0):
+        """Advance the fleet one env tick.
+
+        action: None (data mode / full autopilot) OR
+          - shape (4,): pilot sticks [pitch, roll, yaw-rate, climb] in [-1,1]
+            (angle-mode quad, applied to drone `control_idx`; attitude is
+            integrated per physics substep)
+          - shape (3,): legacy ENU accel command for drone `control_idx`
+        All other drones keep their scripted behaviour.
+        """
         cfg = self.cfg.flight
+        stick_mode = False
+        act = None
+        if (action is not None and self.cfg.mode == "control"
+                and 0 <= int(control_idx) < len(self._states)):
+            act = np.asarray(action, dtype=float)
+            stick_mode = act.shape == (4,)
+            self._control_idx = int(control_idx)
+            if stick_mode and self._control_idx not in self._quads:
+                st = self._states[self._control_idx]
+                self._quads[self._control_idx] = QuadAttitude(
+                    heading_from_vel(st.vel))
+        else:
+            self._control_idx = -1
 
         for k, (st, pr) in enumerate(zip(self._states, self._params)):
             sc = self._fleet[k]
-            if k == 0 and action is not None and self.cfg.mode == "control":
-                a_cmd = np.clip(np.asarray(action, dtype=float),
+            if k == self._control_idx and act is not None:
+                n_sub = max(1, int(round(self.cfg.dt / cfg.dt_phys)))
+                if stick_mode:
+                    quad = self._quads[self._control_idx]
+                    for _ in range(n_sub):
+                        a_cmd = sticks_to_accel(quad, act, st.vel,
+                                                cfg, self.cfg.quad)
+                        step_plant(st, a_cmd, cfg)
+                    continue
+                a_cmd = np.clip(act.reshape(-1)[:3],
                                 -cfg.amax_mps2, cfg.amax_mps2)
             else:
                 behaviour = BEHAVIOURS[sc.name]

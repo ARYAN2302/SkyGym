@@ -29,6 +29,26 @@ class FlightCfg:
 
 
 @dataclass
+class QuadCfg:
+    """Angle-mode quadcopter flight controller (control mode ONLY).
+
+    Real stick semantics: sticks are [-1, 1] commands (pitch / roll / yaw
+    rate / climb rate). Tilt follows the stick through a first-order lag;
+    horizontal acceleration = g * tan(tilt) rotated into ENU by yaw; the
+    resulting ENU accel feeds the same step_plant, so drag, speed limits
+    and floors behave identically to data mode. tilt_max is chosen so the
+    full-stick horizontal command stays within FlightCfg.amax_mps2
+    (g * tan(22 deg) ~= 3.96 <= 4.0).
+    """
+    tilt_max_deg: float = 22.0
+    tau_tilt_s: float = 0.18        # attitude response lag
+    tau_yaw_s: float = 0.15         # yaw-rate response lag
+    yaw_rate_max_dps: float = 120.0
+    vz_max_mps: float = 4.0         # climb-rate command at full stick
+    kp_z: float = 2.5               # vertical velocity servo gain
+
+
+@dataclass
 class RadarCfg:
     """3D surveillance radar channel (detection-level model)."""
     rate_hz: float = 10.0
@@ -133,6 +153,7 @@ class ScenarioCfg:
 class EnvCfg:
     """Gym environment top-level config."""
     flight: FlightCfg = field(default_factory=FlightCfg)
+    quad: QuadCfg = field(default_factory=QuadCfg)
     rig: SensorRig = field(default_factory=SensorRig)
     dt: float = 0.1                  # env step (s) - radar ticks 1:1 at 10 Hz
     max_dets_per_sensor: int = 24
