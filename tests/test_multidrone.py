@@ -159,3 +159,39 @@ def test_run_episode_multi_grades_all_targets():
     assert summary["identity_switches"] <= 2
     # row schema: [t, tid, tgt, e, n, u, ve, vn, vu, err, az_e, el_e, r_e, near]
     assert len(rows[0]) == 14
+
+
+def test_set_behaviour_mid_episode():
+    """Interactive behaviour switching: continuous params, real effects."""
+    import numpy as np
+    env = MultiDroneEnv(EnvCfg())
+    env.reset(seed=7, options={"n_drones": 2, "duration_s": 30.0})
+    for _ in range(20):                      # build up cruise speed
+        env.step(None)
+    r = env.set_behaviour(0, "hover")
+    assert r["behaviour"] == "hover" and "hold_pos" in r["params"]
+    assert r["speed_mps"] > 0                # captured from cruise
+    for _ in range(150):                     # 15 s (braking is clip-limited)
+        obs, _, te, tr, info = env.step(None)
+    assert info["gt"]["targets"][0]["behaviour"] == "hover"
+    assert float(np.linalg.norm(env._states[0].vel)) < 2.5
+    # egress: radial distance must grow
+    env.set_behaviour(0, "egress")
+    d0 = float(np.linalg.norm(env._states[0].pos[:2]))
+    for _ in range(20):
+        obs, _, te, tr, info = env.step(None)
+    d1 = float(np.linalg.norm(env._states[0].pos[:2]))
+    assert d1 > d0 + 5.0
+    # orbit: radius param present and drone keeps flying
+    r = env.set_behaviour(1, "orbit")
+    assert 150.0 <= r["params"]["radius"] <= 1200.0
+    obs, _, te, tr, info = env.step(None)
+    # witness label reflects the switch
+    assert info["gt"]["targets"][1]["behaviour"] == "orbit"
+    for bad, exc in (("nope", ValueError), (99, IndexError)):
+        try:
+            env.set_behaviour(*(bad, "hover") if isinstance(bad, int)
+                               else (0, bad))
+            raise AssertionError("should have raised")
+        except exc:
+            pass

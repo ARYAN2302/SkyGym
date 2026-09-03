@@ -518,3 +518,211 @@ def run_episode_multi(env, seed: int, options: dict | None = None,
         "max_track_updates": max(n_updates.values()) if n_updates else 0,
     }
     return summary, rows, len(frames)
+
+
+# ------------------------------------------------------------------ #
+# Online tracker: tick-by-tick Stone Soup for live/interactive scoring
+# ------------------------------------------------------------------ #
+class OnlineMultiTracker:
+    """Tick-by-tick Stone Soup EKF(CV)+GNN2D tracker with live grading.
+
+    Same conventions as run_episode_multi (EBR/EB/bearing models, radar-only
+    initiation, Hungarian track-to-truth grading at `assign_gate_m`), but
+    fed ONE env tick at a time instead of replaying a recorded episode -
+    this is what powers the playground's live Stone Soup scoreboard.
+
+    update(t, obs, targets_pos, site_enu) -> snapshot dict:
+      t, ticks, n_targets,
+      tracks        [{id, e, n, u, ve, vn, vu, tgt, dist_m}],
+      tracked_pct   mean over targets of % ticks assigned a live track,
+      pos_rmse_m    running RMSE over assigned (track, truth) pairs,
+      id_switches   cumulative chain changes per target,
+      n_confirmed   live tracks with >= 5 updates,
+      n_false       live confirmed-but-never-assigned (batch-consistent),
+      n_false_cum   cumulative confirmed-but-never-assigned this run,
+      n_tracks
+
+    Detection timestamps are the env tick time (latency-tagged t_meas is
+    ignored online) - the live scoreboard is not bit-identical to the
+    batch replay, and does not claim to be.
+    """
+
+    def __init__(self, rig, mode: str = "fusion", eo_with_range: bool = True,
+                 assign_gate_m: float = 250.0):
+        if not STONESOUP_AVAILABLE:
+            raise ImportError(MISSING_STONESOUP_MSG)
+        self.rig = rig
+        self.mode = mode
+        self.eo_with_range = eo_with_range
+        self.assign_gate_m = float(assign_gate_m)
+        self._ebr_map, self._eb_map, self._brg_map = verified_mappings()
+        self._radar = RadarSensor(rig.radar, np.random.default_rng(0))
+        self._tracker = build_tracker()
+        self._queue: list = []
+        self._tracker.detector = self._detector_gen()
+        self._it = iter(self._tracker)
+        self.reset()
+
+    def reset(self) -> None:
+        self._queue.clear()
+        self._track_num: dict[str, int] = {}
+        self._updates: dict[int, int] = {}       # tid -> max len(tr.states)
+        self._ever_assigned: set[int] = set()
+        self._chains: list[list[int | None]] = []
+        self._ticks = 0
+        self._sum_sq = 0.0
+        self._n_err = 0
+        self._switches = 0
+        self._n_targets = 0
+
+    def _detector_gen(self):
+        # update() always enqueues exactly one (time, dets) frame before
+        # pulling next(self._it), so the queue is never empty here.
+        while True:
+            if not self._queue:
+                raise RuntimeError("tracker pulled without a queued frame")
+            yield self._queue.pop(0)
+
+    def _frame_dets(self, t: float, obs: dict, noise: float) -> set:
+        """One env tick's obs rows -> Stone Soup Detections (tick time)."""
+        rig = self.rig
+        ts = T0 + timedelta(seconds=float(t))
+        out = set()
+        for sensor, keep in (("radar", True), ("eo", self.mode == "fusion"),
+                             ("rf", self.mode == "fusion")):
+            if not keep:
+                continue
+            ch = obs.get(sensor)
+            if not ch:
+                continue
+            for row in ch["dets"][:int(ch["n"])]:
+                az, el, rng_m = float(row[0]), float(row[1]), float(row[2])
+                if not (np.isfinite(az) and np.isfinite(el)):
+                    continue
+                if sensor == "radar":
+                    if not np.isfinite(rng_m) or rng_m <= 0:
+                        continue
+                    sa = math.radians(self._radar.ang_sigma(rng_m) * noise)
+                    sr = self._radar.range_sigma(rng_m) * noise
+                    model = CartesianToElevationBearingRange(
+                        ndim_state=6, mapping=self._ebr_map,
+                        noise_covar=np.diag([sa ** 2, sa ** 2, sr ** 2]))
+                    sv = np.array([math.radians(el), math.radians(az), rng_m])
+                elif sensor == "eo":
+                    sa = math.radians(rig.eo.ang_sigma_deg * noise)
+                    use_r = (self.eo_with_range and np.isfinite(rng_m)
+                             and rng_m > 0)
+                    if use_r:
+                        sr = (rng_m * (rig.eo.range_sigma_base
+                                       + rig.eo.range_sigma_per_km2
+                                       * (rng_m / 1000.0) ** 2) * noise)
+                        model = CartesianToElevationBearingRange(
+                            ndim_state=6, mapping=self._ebr_map,
+                            noise_covar=np.diag([sa ** 2, sa ** 2, sr ** 2]))
+                        sv = np.array([math.radians(el), math.radians(az),
+                                       rng_m])
+                    else:
+                        model = CartesianToElevationBearing(
+                            ndim_state=6, mapping=self._eb_map,
+                            noise_covar=np.diag([sa ** 2, sa ** 2]))
+                        sv = np.array([math.radians(el), math.radians(az)])
+                else:  # rf: azimuth only
+                    sa = math.radians(rig.rf.az_sigma_deg * noise)
+                    model = Cartesian2DToBearing(
+                        ndim_state=6, mapping=self._brg_map,
+                        noise_covar=np.diag([sa ** 2]))
+                    sv = np.array([math.radians(az)])
+                out.add(SSDetection(sv, timestamp=ts, measurement_model=model,
+                                    metadata={"sensor": sensor}))
+        return out
+
+    def update(self, t: float, obs: dict, targets_pos, site_enu,
+               noise_scale: float = 1.0) -> dict:
+        """Advance one env tick; returns the live scoreboard snapshot."""
+        G = np.asarray(targets_pos, dtype=float).reshape(-1, 3)
+        n_tgt = len(G)
+        if n_tgt != self._n_targets:
+            self._chains = [[] for _ in range(n_tgt)]
+            self._n_targets = n_tgt
+
+        self._queue.append((T0 + timedelta(seconds=float(t)),
+                            self._frame_dets(t, obs, noise_scale)))
+        time, tracks = next(self._it)
+        t_rel = (time - T0).total_seconds()
+        self._ticks += 1
+
+        track_data = []
+        for tr in tracks:
+            sv = np.asarray(tr.state_vector).flatten()
+            tid = self._track_num.setdefault(str(tr.id), len(self._track_num) + 1)
+            self._updates[tid] = max(self._updates.get(tid, 0), len(tr.states))
+            track_data.append((tid, sv))
+
+        # Hungarian tracks -> truth (same global philosophy as the batch run)
+        tick_assign: dict[int, int] = {}
+        dists: dict[int, float] = {}
+        if track_data and n_tgt:
+            try:
+                from scipy.optimize import linear_sum_assignment
+                T = np.array([[sv[0], sv[2], sv[4]] for _, sv in track_data])
+                C = np.linalg.norm(T[:, None, :] - G[None, :, :], axis=-1)
+                ri, ci = linear_sum_assignment(C)
+                for i, j in zip(ri, ci):
+                    if C[i, j] <= self.assign_gate_m:
+                        tick_assign[int(i)] = int(j)
+                        dists[int(i)] = float(C[i, j])
+            except ImportError:
+                pass                                  # score without grading
+        inv = {j: i for i, j in tick_assign.items()}
+        for j in range(n_tgt):
+            i = inv.get(j)
+            tid = track_data[i][0] if i is not None else None
+            ch = self._chains[j]
+            if tid is not None and ch and ch[-1] is not None and ch[-1] != tid:
+                self._switches += 1
+            ch.append(tid)
+            if tid is not None:
+                self._ever_assigned.add(tid)
+
+        for i, j in tick_assign.items():
+            self._sum_sq += dists[i] ** 2
+            self._n_err += 1
+
+        tracks_out = []
+        for i, (tid, sv) in enumerate(track_data):
+            j = tick_assign.get(i, -1)
+            tracks_out.append({
+                "id": int(tid),
+                "e": round(float(sv[0]), 1), "n": round(float(sv[2]), 1),
+                "u": round(float(sv[4]), 1),
+                "ve": round(float(sv[1]), 2), "vn": round(float(sv[3]), 2),
+                "vu": round(float(sv[5]), 2),
+                "tgt": int(j) if j >= 0 else None,
+                "dist_m": (round(dists[i], 1) if i in dists else None),
+            })
+
+        n_conf = sum(1 for v in self._updates.values() if v >= 5)
+        # live = batch-consistent view (run_episode_multi only sees tracks
+        # alive at episode end); cum = every track ever confirmed this run
+        live_ids = {tid for tid, _ in track_data}
+        n_false_live = sum(1 for tid in live_ids
+                           if self._updates[tid] >= 5
+                           and tid not in self._ever_assigned)
+        tracked = [sum(1 for x in ch if x is not None) / max(self._ticks, 1)
+                   for ch in self._chains]
+        return {
+            "t": round(float(t_rel), 3),
+            "ticks": self._ticks,
+            "n_targets": n_tgt,
+            "tracks": tracks_out,
+            "tracked_pct": round(100.0 * float(np.mean(tracked))
+                                 if tracked else 0.0, 1),
+            "pos_rmse_m": round(float(np.sqrt(self._sum_sq / self._n_err))
+                                if self._n_err else None, 2),
+            "id_switches": int(self._switches),
+            "n_confirmed": int(sum(1 for tid in live_ids
+                                   if self._updates[tid] >= 5)),
+            "n_false": int(n_false_live),
+            "n_false_cum": int(n_conf),
+            "n_tracks": len(track_data),
+        }

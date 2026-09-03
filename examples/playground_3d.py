@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
-"""SkyGym 3D Playground v4 — swarm-native, RC-stick quad flight, live PPI.
+"""SkyGym 3D Playground v5 — swarm-native, RC-stick quad flight, live PPI,
+EO/IR feed, terrain+sky, live Stone Soup score, timeline scrub, behaviour
+commanding, single-drone Fly mode.
 
 Core stays Python: skygym/env.py + multidrone.py -> flight.py -> sensors/*.
 JS renders and composes RC sticks; the angle-mode quad controller (attitude
@@ -7,16 +9,21 @@ lag, tilt -> acceleration, yaw rate, climb-rate servo) lives in flight.py.
 Same Gymnasium contract: obs = corrupted dets, info["gt"] = witness channel
 (+ attitude of the manually-flown drone, control mode only).
 
-Modes (all reachable from the v4 client, swarm is the boot default):
+Modes (all reachable from the v5 client, swarm is the boot default):
   Swarm 20s       - MultiDroneEnv fleet (n_drones), autopilot, data mode
   Solo auto       - autopilot single drone (data mode)
   Fly             - control mode: RC sticks (W/S pitch, A/D yaw, Q/E climb,
-                    gamepad Mode-2, keys 1-4 possess any drone); in a swarm
-                    the fleet keeps its autopilot (one drone is yours)
+                    gamepad Mode-2); 1-4 possess any fleet drone, or FLY
+                    SINGLE (n=1: just you and one drone, no fleet)
+
+Exports carry ONLY what this session actually produced: per-tick witness,
+the raw obs detection rows (dets CSV, dataset schema), the stick actions
+you sent, the behaviour switches you commanded and the live Stone Soup
+score — nothing is re-simulated or padded.
 
 Usage: python examples/playground_3d.py  ->  http://localhost:8000/examples/playground_3d.html
 """
-import argparse, http.server, json, math, os, socketserver, sys, threading, webbrowser
+import argparse, http.server, io, csv, json, math, os, socketserver, sys, threading, webbrowser
 from functools import partial
 from urllib.parse import urlparse
 
@@ -26,6 +33,11 @@ import numpy as np
 from skygym.config import EnvCfg
 from skygym.env import SkyGymEnv
 from skygym.multidrone import MultiDroneEnv
+
+try:
+    from skygym.stone_soup import OnlineMultiTracker as _OMT
+except Exception:                       # stonesoup/scipy missing -> no score
+    _OMT = None
 
 _lock = threading.Lock()
 _env = None            # SkyGymEnv (data or control)
@@ -37,6 +49,8 @@ _cur_sc = "approach"
 _cur_seed = 0
 _cur_n = 1
 _eid = None
+_otr = None            # OnlineMultiTracker (live Stone Soup score)
+_otr_on = True         # client can disable via reset {"tracker": false}
 
 
 def _get_env(mode: str):
@@ -109,18 +123,52 @@ def _gt_ser(gt: dict) -> dict:
     return out
 
 
+def _noise_scale() -> float:
+    """Fleet noise multiplier of the active env (1.0 for single env)."""
+    env = _menv if _active == "multi" else _env
+    fleet = getattr(env, "_fleet", None)
+    return float(fleet[0].noise_scale) if fleet else 1.0
+
+
+def _targets_pos(gt: dict) -> list:
+    return ([tg["pos"] for tg in gt["targets"]] if "targets" in gt
+            else [gt["pos"]])
+
+
+def _tracker_snapshot(gt: dict, obs: dict) -> dict | None:
+    """One OnlineMultiTracker tick (None when disabled/unavailable)."""
+    global _otr
+    if not (_otr_on and _OMT is not None):
+        return None
+    if _otr is None:
+        env = _menv if _active == "multi" else _env
+        _otr = _OMT(env.cfg.rig)
+    try:
+        return _san(_otr.update(float(gt["t"]), obs, _targets_pos(gt),
+                                _env.cfg.rig.site_enu,
+                                noise_scale=_noise_scale()))
+    except Exception:                   # live score must never kill a session
+        return None
+
+
+def _reset_tracker() -> None:
+    global _otr
+    _otr = None                          # rebuilt (and reset) on next tick
+
+
 class H(http.server.SimpleHTTPRequestHandler):
     def do_GET(self):
         if urlparse(self.path).path == "/api/status":
             with _lock:
                 self._j({"ok": True, "dur": _cur_dur, "eid": _eid,
                          "steps": len(_rec), "active": _active,
-                         "n": _cur_n})
+                         "n": _cur_n, "tracker": _OMT is not None})
             return
         return super().do_GET()
 
     def do_POST(self):
         global _cur_dur, _cur_sc, _cur_seed, _cur_n, _rec, _eid, _active
+        global _otr_on
         p = urlparse(self.path).path
         body = self.rfile.read(int(self.headers.get("Content-Length", 0)) or 0)
         try: data = json.loads(body.decode() or "{}")
@@ -136,9 +184,11 @@ class H(http.server.SimpleHTTPRequestHandler):
             autopilot = bool(data.get("autopilot", False))
             try: n = int(np.clip(int(data.get("n_drones", 1)), 1, 4))
             except Exception: n = 1
+            _otr_on = bool(data.get("tracker", True))
             with _lock:
                 _cur_dur, _cur_sc, _cur_seed, _cur_n = dur, sc, seed, n
                 _rec = []
+                _reset_tracker()
                 if n > 1:
                     env = _get_multi_env(n, autopilot)
                     obs, info = env.reset(seed=seed, options={
@@ -149,10 +199,13 @@ class H(http.server.SimpleHTTPRequestHandler):
                                 if (n > 1 and sc and "," in sc) else None)})
                     _eid = info["gt"]["episode_id"]
                     gt = _san(_gt_ser(info["gt"]))
-                    _rec.append({"t": gt["t"], "obs": _obs_ser(obs), "gt": gt})
+                    score = _tracker_snapshot(info["gt"], obs)
+                    _rec.append({"t": gt["t"], "obs": _obs_ser(obs),
+                                 "gt": gt, "action": None, "score": score})
                     resp = {"obs": _obs_ser(obs), "gt": gt, "terminated": False,
                             "truncated": False, "duration_s": dur,
-                            "mode": "multi", "n_drones": n}
+                            "mode": "multi", "n_drones": n, "score": score,
+                            "tracker": _otr_on and _OMT is not None}
                     _active = "multi"
                 else:
                     env = _get_env("data" if autopilot else "control")
@@ -160,12 +213,33 @@ class H(http.server.SimpleHTTPRequestHandler):
                         "scenario": sc, "duration_s": dur})
                     _eid = info["gt"]["episode_id"]
                     gt = _san(_gt_ser(info["gt"]))
-                    _rec.append({"t": gt["t"], "obs": _obs_ser(obs), "gt": gt})
+                    score = _tracker_snapshot(info["gt"], obs)
+                    _rec.append({"t": gt["t"], "obs": _obs_ser(obs),
+                                 "gt": gt, "action": None, "score": score})
                     resp = {"obs": _obs_ser(obs), "gt": gt, "terminated": False,
                             "truncated": False, "duration_s": dur,
-                            "mode": _env_mode, "n_drones": 1}
+                            "mode": _env_mode, "n_drones": 1, "score": score,
+                            "tracker": _otr_on and _OMT is not None}
                     _active = "single"
             self._j(resp); return
+
+        if p == "/api/behaviour":
+            with _lock:
+                if _active != "multi":
+                    self._j({"ok": False,
+                             "error": "behaviour commanding needs a swarm "
+                                      "(solo/fly-single has one drone)"})
+                    return
+                try: idx = int(data.get("idx", -1))
+                except Exception: idx = -1
+                name = str(data.get("behaviour", ""))
+                try:
+                    r = _menv.set_behaviour(idx, name)
+                    r["fleet"] = [tg.name for tg in _menv._fleet]
+                    self._j({"ok": True, **_san(r)})
+                except (ValueError, IndexError) as e:
+                    self._j({"ok": False, "error": str(e)})
+            return
 
         if p == "/api/step":
             act = data.get("action")
@@ -181,6 +255,7 @@ class H(http.server.SimpleHTTPRequestHandler):
             n_steps = int(np.clip(n_steps, 1, 8))
             with _lock:
                 obs_s, gt, te, tr, frames = None, None, False, False, []
+                act_out = _san(act.tolist() if hasattr(act, "tolist") else None)
                 for _i in range(n_steps):
                     if _active == "multi":
                         # control-mode multi: sticks drive the possessed drone;
@@ -191,7 +266,9 @@ class H(http.server.SimpleHTTPRequestHandler):
                         obs, _, te, tr, info = env.step(act)
                     obs_s = _obs_ser(obs)
                     gt = _san(_gt_ser(info["gt"]))
-                    _rec.append({"t": gt["t"], "obs": obs_s, "gt": gt})
+                    score = _tracker_snapshot(info["gt"], obs)
+                    _rec.append({"t": gt["t"], "obs": obs_s, "gt": gt,
+                                 "action": act_out, "score": score})
                     if "targets" in gt:
                         frames.append({"t": gt["t"],
                                        "pos": gt["pos"],
@@ -204,7 +281,8 @@ class H(http.server.SimpleHTTPRequestHandler):
                         "truncated": bool(tr), "duration_s": _cur_dur,
                         "mode": _active or "single", "n_drones": _cur_n,
                         "recording_len": len(_rec), "steps_done": len(frames),
-                        "frames": frames}
+                        "frames": frames, "score": score,
+                        "tracker": _otr_on and _OMT is not None}
             self._j(resp); return
 
         if p == "/api/export":
@@ -212,34 +290,69 @@ class H(http.server.SimpleHTTPRequestHandler):
             with _lock: rec = list(_rec); dur = _cur_dur; sc = _cur_sc; eid = _eid
             if fmt == "jsonl":
                 body_str = "\n".join(json.dumps({"t": r["t"], "gt": r["gt"],
-                                                 "obs": r["obs"]}) for r in rec)
+                                                 "obs": r["obs"],
+                                                 "action": r.get("action"),
+                                                 "score": r.get("score")})
+                                     for r in rec)
                 self._file(body_str, "application/jsonl",
                            f"skygym_{sc.replace(',', '_')}_{dur:.0f}s_{eid}.jsonl")
                 return
+            if fmt == "csv_dets":
+                # one row per detection, exactly the Stage-0 dataset schema
+                # (wrappers.DetectionRecorder parquet twin, minus witness)
+                out = io.StringIO(); w = csv.writer(out)
+                w.writerow(["episode_id", "t", "sensor", "az_deg", "el_deg",
+                            "range_m", "clutter", "snr_db", "px", "t_meas",
+                            "p_quad", "p_fixed", "p_bird", "p_unknown"])
+                for r in rec:
+                    obs = r["obs"]
+                    for sensor in ("radar", "eo", "rf"):
+                        ch = obs.get(sensor) or {"dets": [], "n": 0}
+                        for row in ch["dets"][:ch["n"]]:
+                            w.writerow([eid, r["t"], sensor] +
+                                       [(None if v is None or
+                                         (isinstance(v, float) and
+                                          not math.isfinite(v)) else
+                                        round(v, 4) if isinstance(v, float)
+                                        else v) for v in row])
+                self._file(out.getvalue(), "text/csv",
+                           f"skygym_dets_{sc.replace(',', '_')}_{dur:.0f}s_{eid}.csv")
+                return
             if fmt == "csv":
-                import io, csv
                 out = io.StringIO(); w = csv.writer(out)
                 multi = bool(rec) and "targets" in rec[0]["gt"]
                 if multi:
                     hdr = ["t", "target_idx", "behaviour", "true_class", "tx_on",
-                           "pos_e", "pos_n", "pos_u", "vel_e", "vel_n", "vel_u",
+                           "gt_pos_e", "gt_pos_n", "gt_pos_u",
+                           "gt_vel_e", "gt_vel_n", "gt_vel_u",
                            "gt_range_m", "gt_az_deg", "gt_el_deg",
+                           "act_pitch", "act_roll", "act_yaw", "act_climb",
+                           "ss_tracked_pct", "ss_pos_rmse_m", "ss_id_switches",
                            "radar_n", "eo_n", "rf_n", "episode_id", "scenario"]
                     w.writerow(hdr)
                     for r in rec:
                         gt = r["gt"]; obs = r["obs"]; t = r.get("t", gt.get("t", 0))
+                        a = r.get("action") or [None, None, None, None]
+                        s = r.get("score") or {}
                         for tg in gt["targets"]:
                             w.writerow([t, tg["idx"], tg["behaviour"],
                                         tg["true_class"], tg["tx_on"],
                                         *tg["pos"], *tg["vel"], tg["range_m"],
                                         tg["az_deg"], tg["el_deg"],
+                                        a[0], a[1], a[2], a[3],
+                                        s.get("tracked_pct"),
+                                        s.get("pos_rmse_m"),
+                                        s.get("id_switches"),
                                         obs["radar"]["n"], obs["eo"]["n"],
                                         obs["rf"]["n"],
                                         gt["episode_id"], gt["scenario"]])
                 else:
-                    hdr = ["t", "pos_e", "pos_n", "pos_u", "vel_e", "vel_n",
-                           "vel_u", "gt_range_m", "gt_az_deg", "gt_el_deg",
+                    hdr = ["t", "gt_pos_e", "gt_pos_n", "gt_pos_u",
+                           "gt_vel_e", "gt_vel_n", "gt_vel_u",
+                           "gt_range_m", "gt_az_deg", "gt_el_deg",
                            "true_class", "tx_on",
+                           "act_pitch", "act_roll", "act_yaw", "act_climb",
+                           "ss_tracked_pct", "ss_pos_rmse_m", "ss_id_switches",
                            "radar_n", "radar_az_deg", "radar_el_deg",
                            "radar_range_m", "radar_snr_db", "radar_pixel_px",
                            "radar_clutter_flag", "radar_p_quad", "radar_p_fixed",
@@ -263,9 +376,14 @@ class H(http.server.SimpleHTTPRequestHandler):
                         eo = _first_lie(obs["eo"]["dets"]) if obs["eo"]["n"] > 0 else None
                         rf = _first_lie(obs["rf"]["dets"]) if obs["rf"]["n"] > 0 else None
                         def g(d, i): return d[i] if d is not None and len(d) > i else None
+                        a = r.get("action") or [None, None, None, None]
+                        s = r.get("score") or {}
                         w.writerow([t, *gt["pos"], *gt["vel"], gt["range_m"],
                                     gt["az_deg"], gt["el_deg"], gt["true_class"],
                                     gt["tx_on"],
+                                    a[0], a[1], a[2], a[3],
+                                    s.get("tracked_pct"), s.get("pos_rmse_m"),
+                                    s.get("id_switches"),
                                     obs["radar"]["n"], g(rd, 0), g(rd, 1), g(rd, 2),
                                     g(rd, 4), g(rd, 5), g(rd, 3),
                                     g(rd, 7), g(rd, 8), g(rd, 9), g(rd, 10),
@@ -305,7 +423,7 @@ class H(http.server.SimpleHTTPRequestHandler):
 
 
 def main():
-    ap = argparse.ArgumentParser(description="SkyGym 3D Playground v3")
+    ap = argparse.ArgumentParser(description="SkyGym 3D Playground v5")
     ap.add_argument("--port", type=int, default=8000)
     ap.add_argument("--host", default="127.0.0.1")
     ap.add_argument("--no-browser", action="store_true")
@@ -316,7 +434,8 @@ def main():
     socketserver.TCPServer.allow_reuse_address = True
     with socketserver.TCPServer((args.host, args.port), h) as httpd:
         url = f"http://{args.host}:{args.port}/examples/playground_3d.html"
-        print("== SkyGym 3D Playground v4 == Swarm (2-4 drones) | Solo auto | Fly (RC sticks, 1-4 possess, FPV)")
+        print("== SkyGym 3D Playground v5 == Swarm (2-4 drones) | Solo auto | Fly (single or 1-4 possess, FPV)")
+        print("   Live Stone Soup score + timeline scrub + EO/IR feed + behaviour commanding")
         print(f"Serving {os.path.abspath(ROOT)} at {url}")
         print("Core: skygym/env.py + multidrone.py -> flight.py -> sensors/*")
         if not args.no_browser:

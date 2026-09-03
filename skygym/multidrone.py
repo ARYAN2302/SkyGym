@@ -152,6 +152,62 @@ class MultiDroneEnv(gym.Env):
         self._control_idx = -1
 
     # ------------------------------------------------------------------ #
+    def set_behaviour(self, k: int, name: str) -> dict:
+        """Switch drone k's autopilot behaviour MID-EPISODE (interactive use).
+
+        Builds fresh behaviour parameters from the drone's CURRENT state so
+        the transition is continuous (no teleport): hover holds here,
+        orbit uses the current range to the asset as radius, serpentine
+        weaves along the current heading, waypoint_cruise samples a fresh
+        route from the site. The drone keeps flying under BEHAVIOURS[name]
+        from the next step().
+
+        Playground/benchmark interactive feature only - the scripted
+        single-behaviour data generator (data mode without this call) is
+        unchanged and stays fully deterministic per seed.
+        """
+        if not (0 <= k < len(self._states)):
+            raise IndexError(f"drone index {k} out of range "
+                             f"(fleet of {len(self._states)})")
+        if name not in BEHAVIOURS:
+            raise ValueError(f"unknown behaviour '{name}' - "
+                             f"choose from {sorted(BEHAVIOURS)}")
+        st, sc = self._states[k], self._fleet[k]
+        sc.name = name
+        speed = float(np.clip(np.linalg.norm(st.vel[[0, 1]]),
+                              max(sc.speed_min, 1.0), sc.speed_max))
+        pr: dict = {"speed": speed}
+        if name == "hover":
+            pr["hold_pos"] = st.pos.copy()
+        elif name == "approach":
+            pr["target_enu"] = (np.asarray(sc.target_enu, dtype=float)
+                                + np.array([0.0, 0.0, 30.0]))
+        elif name == "orbit":
+            center = np.asarray(sc.target_enu, dtype=float)
+            rel = (st.pos - center)[[0, 1]]
+            pr["center_enu"] = center
+            pr["radius"] = float(np.clip(np.linalg.norm(rel) + 1e-6,
+                                         150.0, 1200.0))
+            pr["alt"] = float(st.pos[2])
+        elif name == "waypoint_cruise":
+            pr["waypoints"] = _sample_waypoints(st.pos, self._rng)
+            pr["wp_idx"] = 0
+        elif name == "serpentine":
+            fwd = st.vel.copy()
+            fwd[2] = 0.0
+            n = np.linalg.norm(fwd)
+            fwd = fwd / n if n > 1.0 else np.array([0.0, 1.0, 0.0])
+            pr["forward_dir"] = fwd
+            pr["weave_period"] = float(sc.weave_period_s)
+            pr["weave_amplitude"] = float(sc.weave_amplitude_mps)
+        self._params[k] = pr
+        return {"idx": k, "behaviour": name,
+                "speed_mps": round(speed, 2),
+                "params": {kk: (np.asarray(vv).tolist()
+                                if isinstance(vv, np.ndarray) else vv)
+                           for kk, vv in pr.items()}}
+
+    # ------------------------------------------------------------------ #
     def _make_obs(self, sensor_dets: dict[str, list]):
         return {name: {"dets": _dets_to_padded(dets, self.max_dets,
                                                self.row_len),

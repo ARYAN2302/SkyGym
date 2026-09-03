@@ -62,3 +62,32 @@ def test_radar_only_mode_smokes():
         env, seed=20260902, options=options, mode="radar")
     assert summary["dets_fed"]["radar"] > 0
     assert summary["dets_fed"]["eo"] == 0 and summary["dets_fed"]["rf"] == 0
+
+
+def test_online_multi_tracker_live_scoring():
+    """Tick-by-tick tracker: healthy scoring on a short fleet episode."""
+    from skygym.multidrone import MultiDroneEnv
+    pytest.importorskip("stonesoup")
+    pytest.importorskip("scipy")
+    env = MultiDroneEnv(EnvCfg(max_dets_per_sensor=36))
+    frames, env = stone_soup.roll_frames(
+        env, 20260902, {"n_drones": 3, "duration_s": 10.0})
+    otr = stone_soup.OnlineMultiTracker(env.cfg.rig)
+    snap = None
+    for f in frames:
+        snap = otr.update(f["t"], f["obs"],
+                          [t["pos"] for t in f["gt"]["targets"]],
+                          env.cfg.rig.site_enu)
+    assert snap["ticks"] == len(frames)
+    assert snap["n_targets"] == 3
+    assert snap["tracked_pct"] > 50.0
+    assert snap["pos_rmse_m"] is not None and snap["pos_rmse_m"] < 120.0
+    assert isinstance(snap["id_switches"], int) and snap["id_switches"] >= 0
+    assert snap["n_false"] <= snap["n_false_cum"]
+    assert snap["tracks"] and {"id", "e", "n", "u", "tgt"} <= set(snap["tracks"][0])
+    # single-target convenience: one truth position also works
+    otr2 = stone_soup.OnlineMultiTracker(env.cfg.rig, mode="radar")
+    s2 = otr2.update(frames[0]["t"], frames[0]["obs"],
+                     [frames[0]["gt"]["targets"][0]["pos"]],
+                     env.cfg.rig.site_enu)
+    assert s2["n_targets"] == 1 and s2["ticks"] == 1

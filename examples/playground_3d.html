@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>SkyGym — 3D Playground v4</title>
+<title>SkyGym — 3D Playground v5</title>
 <script async src="https://unpkg.com/es-module-shims@1.8.0/dist/es-module-shims.js"></script>
 <script type="importmap">{"imports":{"three":"https://unpkg.com/three@0.160.0/build/three.module.js","three/addons/":"https://unpkg.com/three@0.160.0/examples/jsm/"}}</script>
 <style>
@@ -48,14 +48,14 @@
     background:rgba(4,10,18,.88);border:1px solid #1c3a5e;z-index:3}
   #ppileg{position:fixed;left:24px;bottom:342px;z-index:3;font-size:10px;color:#94a3b8;
     background:rgba(4,10,18,.75);border:1px solid #1c3a5e;border-radius:8px;padding:4px 8px}
-  #joy{position:fixed;left:360px;bottom:24px;width:130px;height:130px;background:rgba(15,23,42,.46);
+  #joy{position:fixed;left:360px;bottom:84px;width:130px;height:130px;background:rgba(15,23,42,.46);
     border:1px solid #263554;border-radius:50%;z-index:3;touch-action:none}
   #stick{position:absolute;left:50%;top:50%;width:50px;height:50px;margin:-25px 0 0 -25px;
     background:radial-gradient(circle at 30% 30%,#7dd3fc,#0ea5e9);border-radius:50%}
   #msg{position:fixed;left:50%;top:42%;transform:translate(-50%,-50%);background:#0f172a;
     border:1px solid #38bdf8;color:#e0f2fe;padding:14px 18px;border-radius:12px;font-size:13px;
     display:none;z-index:4;max-width:560px;text-align:center}
-  #hint{position:fixed;left:50%;bottom:10px;transform:translateX(-50%);background:rgba(15,23,42,.85);
+  #hint{position:fixed;left:50%;bottom:52px;transform:translateX(-50%);background:rgba(15,23,42,.85);
     border:1px solid #263554;border-radius:999px;padding:6px 14px;font-size:11px;z-index:3;color:#94a3b8}
   #hint b{color:#7dd3fc}
   #xh{position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);width:26px;height:26px;
@@ -69,7 +69,29 @@
   #banner code{background:#0b1220;border:1px solid #263554;border-radius:8px;padding:8px 12px;
     display:inline-block;margin:10px 0;font-family:ui-monospace,monospace;color:#7dd3fc;font-size:13px}
   #banner p{color:#94a3b8;font-size:13px;line-height:1.6}
-  @media (max-width:900px){#box{width:300px}#ppi{width:220px;height:220px}#joy{display:none}}
+  #eobox{position:fixed;right:396px;bottom:48px;width:326px;z-index:3;background:rgba(4,10,18,.92);
+    border:1px solid #1c3a5e;border-radius:12px;padding:8px}
+  #eobox .eohead{display:flex;justify-content:space-between;align-items:center;font-size:10px;
+    color:#94a3b8;font-family:ui-monospace,monospace;margin-bottom:6px}
+  #eo{width:100%;display:block;border-radius:6px;background:#000}
+  #eohead-r{display:flex;gap:6px;align-items:center}
+  #eobox button{flex:none;padding:2px 8px;font-size:10px;width:auto}
+  #tl{position:fixed;left:50%;transform:translateX(-50%);bottom:12px;z-index:3;width:min(520px,42vw);
+    display:flex;gap:8px;align-items:center;background:rgba(15,23,42,.88);border:1px solid #263554;
+    border-radius:999px;padding:5px 12px}
+  #tl input[type=range]{flex:1;accent-color:#38bdf8;cursor:pointer;height:4px}
+  #tl .tt{font-family:ui-monospace,monospace;font-size:10px;color:#94a3b8;min-width:96px;text-align:center}
+  #tl button{flex:none;padding:3px 10px;font-size:11px;width:auto}
+  #fleet select{background:#0b1220;color:#e2e8f0;border:1px solid #2a3a56;border-radius:6px;
+    font-family:ui-monospace,monospace;font-size:10px;padding:2px;width:100%}
+  #fleet select:disabled{opacity:.5}
+  #tpill{position:relative}
+  #tprog{position:absolute;left:12px;right:12px;bottom:3px;height:2px;background:#1e2e45;border-radius:2px;overflow:hidden}
+  #tfill{height:100%;width:0%;background:#38bdf8;border-radius:2px}
+  input[type=number]{background:#0b1220;border:1px solid #2a3a56;border-radius:10px;color:#e2e8f0;
+    padding:8px;font-size:13px;width:90px}
+  @media (max-width:900px){#box{width:300px}#ppi{width:220px;height:220px}#joy{display:none}
+    #eobox{width:240px;right:316px}}
 </style>
 </head>
 <body>
@@ -77,8 +99,9 @@
 <div id="labels"></div>
 
 <div id="top">
-  <div class="pill">SkyGym <b>3D Playground v4</b></div>
-  <div class="pill"><span id="mode">booting…</span> · t <b id="t">0.0s</b> / <b id="dur">—</b> <span id="live" style="color:#bbf7d0">●</span> FPS <b id="fps">—</b></div>
+  <div class="pill">SkyGym <b>3D Playground v5</b></div>
+  <div class="pill" id="tpill"><span id="mode">booting…</span> · t <b id="t">0.0s</b> / <b id="dur">—</b> <span id="live" style="color:#bbf7d0">●</span> FPS <b id="fps">—</b><div id="tprog"><div id="tfill"></div></div></div>
+  <div class="pill" id="sspill" style="display:none">SS <b id="ss_trk">—</b>% · <b id="ss_rmse">—</b>m · IDsw <b id="ss_sw">0</b> · FT <b id="ss_ft">0</b></div>
   <div class="pill">Cam <b id="cam">Chase</b> (C)</div>
   <div class="pill">HDG <b id="hdg">—</b> · Dets <b id="ndets">0</b> (R<span id="r">0</span>/E<span id="e">0</span>/F<span id="f">0</span>)</div>
   <div class="pill">Ep <b id="ep">1</b> · seed <b id="seedp">—</b></div>
@@ -97,6 +120,19 @@
     <button class="non small on" data-n="3">3</button>
     <button class="non small" data-n="4">4</button>
   </div>
+  <h3>Mission timer &amp; pace</h3>
+  <div class="row">
+    <span style="font-size:11px;color:#94a3b8;align-self:center">duration</span>
+    <input id="durin" type="number" min="5" max="600" step="5" value="20">
+    <span style="font-size:11px;color:#94a3b8;align-self:center">s / episode</span>
+  </div>
+  <div class="row">
+    <span style="font-size:11px;color:#94a3b8;align-self:center">pace</span>
+    <button class="spd small" data-s="0.5">0.5×</button>
+    <button class="spd small on" data-s="1">1×</button>
+    <button class="spd small" data-s="2">2×</button>
+    <button class="spd small" data-s="4">4×</button>
+  </div>
   <div class="row">
     <button id="restart" class="small">↻ Restart</button>
     <button id="pause" class="small">⏸ Pause (Space)</button>
@@ -106,17 +142,21 @@
     <button id="scale" class="small">Scale: 40×</button>
     <button id="volumes" class="small">Volumes (G)</button>
     <button id="ppib" class="small on">PPI (P)</button>
+    <button id="scenb" class="small on">Terrain (Y)</button>
   </div>
-  <h3>Export (current episode)</h3>
+  <h3>Export (current episode — exactly what you flew)</h3>
   <div class="row">
     <button id="excsv" class="small">⬇ CSV</button>
+    <button id="exdet" class="small">⬇ Dets CSV</button>
     <button id="exjsonl" class="small">⬇ JSONL</button>
   </div>
   <h3>Fleet witness (truth — not what sensors see)</h3>
   <table id="fleet">
-    <thead><tr><th></th><th>DRONE</th><th>BEHAVIOUR</th><th>RANGE</th><th>AZ</th><th>HDG</th><th>ALT</th><th>TX</th></tr></thead>
+    <thead><tr><th></th><th>DRONE</th><th>BEHAVIOUR</th><th>RANGE</th><th>AZ</th><th>HDG</th><th>ALT</th><th>TX</th><th>CMD</th></tr></thead>
     <tbody id="fleetb"></tbody>
   </table>
+  <h3>Stone Soup (live score)</h3>
+  <div id="scorebox" class="mono" style="display:none">waiting…</div>
   <h3>Reading the two layers</h3>
   <div class="help">
     <b>3D scene = truth</b> (the witness channel): drones, trails, sensor
@@ -127,20 +167,23 @@
   </div>
   <h3>Keys</h3>
   <div class="help">
-    <b>Click canvas</b> / <b>1-4</b> take the stick of drone k (fleet keeps
-    its autopilot) · <b>W/S</b> pitch fwd/back · <b>A/D</b> yaw · <b>Q/E</b>
-    down/up · <b>C</b> camera (FPV: mouse-look, ESC releases) ·
-    <b>gamepad</b> Mode-2 sticks · <b>G</b> volumes · <b>P</b> PPI ·
-    <b>T</b> scale · <b>Space</b> pause
+    <b>Click canvas</b> / <b>1-4</b> take the stick of drone k · <b>R</b> release
+    to autopilot · <b>W/S</b> pitch · <b>A/D</b> yaw · <b>Q/E</b> down/up ·
+    <b>C</b> camera (FPV: mouse-look) · <b>gamepad</b> Mode-2 · CMD column:
+    switch any drone's autopilot behaviour mid-flight · <b>O</b> EO feed ·
+    <b>Y</b> terrain · <b>G</b> volumes · <b>P</b> PPI · <b>T</b> scale ·
+    <b>Space</b> pause · timeline scrubs the recorded session
   </div>
 </div>
 
 <canvas id="ppi" width="640" height="640"></canvas>
 <div id="ppileg">PPI · what the sensors see · green radar · amber clutter · cyan EO · fuchsia RF rim · dashed cyan truth</div>
+<div id="eobox"><div class="eohead"><span>EO/IR gimbal · <b id="eocue">D1</b> · <span id="eoaz">—</span></span><button id="eob" class="small on">O</button></div><div style="position:relative"><canvas id="eo" width="512" height="320"></canvas><div style="position:absolute;inset:0;border-radius:6px;pointer-events:none;background:repeating-linear-gradient(0deg, rgba(0,0,0,.16) 0 1px, transparent 1px 3px), radial-gradient(ellipse at center, transparent 55%, rgba(0,0,0,.55) 100%)"></div></div></div>
+<div id="tl"><button id="tlive" class="small on">LIVE</button><input id="scrub" type="range" min="0" max="1" step="1" value="0"><span id="tliv" class="tt">0.0 / — s</span></div>
 <div id="joy"><div id="stick"></div></div>
 <div id="msg"></div>
 <div id="xh"></div>
-<div id="hint"><b>Click the canvas</b> or press <b>1-4</b> to fly · <b>C</b> camera · <b>G</b> volumes · <b>P</b> PPI · <b>Space</b> pause</div>
+<div id="hint"><b>1-4</b> fly · <b>R</b> release · <b>C</b> cam · <b>O</b> EO · <b>Y</b> terrain · <b>P</b> PPI · drag timeline to scrub</div>
 <div id="banner"><div class="in">
   <h2>⚠ The playground needs its Python server</h2>
   <p>You (most likely) opened <code>playground_3d.html</code> directly from disk —
@@ -160,6 +203,7 @@ const DCSS   = ['#38bdf8', '#f472b6', '#a3e635', '#fbbf24'];
 const C_RADAR = 0x22c55e, C_EO = 0x22d3ee, C_CLUTTER = 0xf59e0b;
 const STEP_MS = 100, MAXD = 4, BASE_SEED = 20260902;
 const ACC_MAX = 4.0;                                            // m/s^2, must match FlightCfg
+const BEHAVS = ['hover', 'approach', 'orbit', 'waypoint_cruise', 'serpentine', 'egress'];
 
 /* ENU -> three.js (x=E, y=U, z=-N); az from North, clockwise */
 function azelDir(azDeg, elDeg, out) {
@@ -216,6 +260,63 @@ pad.position.y = 3; site.add(pad);
 const mast = new THREE.Mesh(new THREE.CylinderGeometry(1.2, 1.2, 60, 8), siteMat);
 mast.position.y = 30; site.add(mast);
 scene.add(site);
+
+/* ============================================================ scenery (Phase B): terrain + night sky */
+const scenery = new THREE.Group(); scenery.visible = true; scene.add(scenery);
+function hash2(x, y) { const s = Math.sin(x * 127.1 + y * 311.7) * 43758.5453; return s - Math.floor(s); }
+function vnoise(x, y) {
+  const xi = Math.floor(x), yi = Math.floor(y), xf = x - xi, yf = y - yi;
+  const u = xf * xf * (3 - 2 * xf), v = yf * yf * (3 - 2 * yf);
+  const a = hash2(xi, yi), b = hash2(xi + 1, yi), c = hash2(xi, yi + 1), d = hash2(xi + 1, yi + 1);
+  return a + (b - a) * u + (c - a) * v + (a - b - c + d) * u * v;
+}
+{ // DEM-style terrain: flat pad area, gentle hills mid-range, ridges far out
+  const SIZE = 14000, SEG = 110;
+  const g = new THREE.PlaneGeometry(SIZE, SIZE, SEG, SEG); g.rotateX(-Math.PI / 2);
+  const pos = g.attributes.position; const cols = new Float32Array(pos.count * 3);
+  for (let i = 0; i < pos.count; i++) {
+    const x = pos.getX(i), z = pos.getZ(i), r = Math.hypot(x, z);
+    let h = 0;
+    for (let o = 0; o < 3; o++) h += vnoise(x * (o + 1) / 1600 + 7.3, z * (o + 1) / 1600 + 2.9) / (o + 1);
+    h *= 2.0;
+    const flat = 1 - THREE.MathUtils.smoothstep(r, 900, 2400);   // 1 near site
+    const far = THREE.MathUtils.smoothstep(r, 2600, 6500);       // mountains beyond ops area
+    h = h * 22 * (1 - flat) * (0.25 + far) + far * far * 260 * vnoise(x * 0.00035 + 3.1, z * 0.00035 + 8.7);
+    pos.setY(i, h - 0.5);
+    const t = THREE.MathUtils.clamp(h / 300, 0, 1);
+    cols[i * 3] = 0.085 + 0.10 * t; cols[i * 3 + 1] = 0.095 + 0.05 * t; cols[i * 3 + 2] = 0.075 + 0.055 * t;
+  }
+  g.computeVertexNormals();
+  g.setAttribute('color', new THREE.BufferAttribute(cols, 3));
+  scenery.add(new THREE.Mesh(g, new THREE.MeshStandardMaterial({vertexColors: true, roughness: 1, metalness: 0})));
+}
+{ // night sky dome: gradient + sun glow + sparse stars (fog-safe: shader ignores fog)
+  const skyMat = new THREE.ShaderMaterial({
+    side: THREE.BackSide, depthWrite: false,
+    uniforms: {sunDir: {value: new THREE.Vector3(0.35, 0.55, -0.75).normalize()}},
+    vertexShader: `varying vec3 vD; void main(){ vD = normalize(position);
+      gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
+    fragmentShader: `varying vec3 vD; uniform vec3 sunDir;
+      float hash3(vec3 p){ return fract(sin(dot(p, vec3(12.9898, 78.233, 45.164))) * 43758.5453); }
+      void main(){
+        float y = max(vD.y, 0.0);
+        vec3 sky = mix(vec3(0.078, 0.133, 0.220), vec3(0.012, 0.025, 0.07), pow(y, 0.55));
+        float sd = max(dot(vD, sunDir), 0.0);
+        sky += vec3(0.9, 0.85, 0.7) * pow(sd, 180.0) * 0.9;
+        sky += vec3(0.35, 0.30, 0.22) * pow(sd, 6.0) * 0.25;
+        vec3 sp = floor(vD * 230.0);
+        sky += vec3(step(0.9985, hash3(sp)) * smoothstep(0.15, 0.5, vD.y) * 0.7);
+        gl_FragColor = vec4(sky, 1.0);
+      }`});
+  scenery.add(new THREE.Mesh(new THREE.SphereGeometry(13500, 32, 20), skyMat));
+}
+let sceneryOn = true;
+function applyScenery() {
+  scenery.visible = sceneryOn; ground.visible = !sceneryOn;
+  const c = sceneryOn ? 0x142238 : 0x070b14;
+  scene.background = new THREE.Color(c); scene.fog.color.set(c);
+  $('scenb').classList.toggle('on', sceneryOn);
+}
 
 /* sensor volumes: radar 8 km ring, EO 60° wedge @3 km, RF 5 km ring */
 const volumes = new THREE.Group(); volumes.visible = false; scene.add(volumes);
@@ -492,6 +593,11 @@ let state = null, prevState = null, inFlight = false, paused = false;
 let mode = 'swm', nDrones = 3, autoLoop = true, epIdx = 1;
 let acc = 0, lastT = 0, seed = BASE_SEED;
 let possessed = 0;                                    // drone under your stick
+let simSpeed = 1, released = false;                   // pace control + autopilot hand-back
+let scrubbing = false, scrubI = -1;                   // timeline scrub
+let trackerOn = false, scoreWarned = false;           // live Stone Soup score
+const recBuf = [];                                    // recorded session frames
+let frameN = 0, showEO = true;                        // EO feed pacing/toggle
 const look = {yaw: 0, pitch: 0};                      // FPV head offsets (rad)
 let fpvLocked = false;
 const curPos = [], prevPos = [];                   // per-target xyz for interpolation
@@ -522,6 +628,8 @@ function onState(res) {
     enuXyz(tgs[i].pos[0], tgs[i].pos[1], tgs[i].pos[2], _v);
     trailPush(drones[i], _v.x, _v.y, _v.z);
   }
+  recBuf.push({t: res.gt.t, gt: res.gt, obs: res.obs, score: res.score || null});
+  if (recBuf.length > 9000) recBuf.splice(0, recBuf.length - 9000);
   ppiPush(res.obs);
   updateHUD(res);
   if (res.terminated || res.truncated) episodeEnded(res);
@@ -530,20 +638,23 @@ function clearEpisodeVisuals() {
   for (const d of drones) { trailClear(d); }
   blips.length = 0;
 }
+function durVal() { return Math.max(5, Math.min(600, +$('durin').value || 20)); }
 async function resetEpisode(newSeed) {
   if (newSeed !== undefined) seed = newSeed;
   const body = mode === 'fly'
-    ? {scenario: 'approach', seed, duration_s: 600, autopilot: false, n_drones: nDrones}
+    ? {scenario: 'approach', seed, duration_s: durVal(), autopilot: false, n_drones: 1}
     : mode === 'solo'
-    ? {scenario: 'approach', seed, duration_s: 20, autopilot: true, n_drones: 1}
-    : {scenario: 'approach,approach,orbit,serpentine', seed, duration_s: 20,
+    ? {scenario: 'approach', seed, duration_s: durVal(), autopilot: true, n_drones: 1}
+    : {scenario: 'approach,approach,orbit,serpentine', seed, duration_s: durVal(),
        autopilot: true, n_drones: nDrones};
   const res = await api('/api/reset', body);
+  recBuf.length = 0; scrubbing = false; scrubI = -1; trackerOn = !!res.tracker;
   clearEpisodeVisuals();
   prevPos.forEach(p => p.set(0, 0, 0)); curPos.forEach(p => p.set(0, 0, 0));
-  state = null; prevState = null; acc = 0;
+  state = null; prevState = null; acc = 0; possessed = 0; released = false;
+  $('tlive').classList.add('on'); $('tliv').textContent = '0.0 s';
   onState(res);
-  $('mode').textContent = mode === 'fly' ? `Fly · drone ${possessed + 1} (fleet auto)` :
+  $('mode').textContent = mode === 'fly' ? 'Fly single (no fleet)' :
                           mode === 'solo' ? 'Solo auto' : `Swarm ×${nDrones}`;
   $('seedp').textContent = seed; $('ep').textContent = epIdx;
   $('dur').textContent = (res.duration_s ?? 20) + 's';
@@ -560,12 +671,13 @@ function episodeEnded(res) {
 }
 /* ============================================================ stepping (P4) */
 function stepOnce() {
-  if (!state || inFlight || paused || !apiOK) return;
+  if (!state || inFlight || paused || scrubbing || !apiOK) return;
   const n = Math.min(8, Math.max(1, Math.floor(acc / STEP_MS)));
   if (n <= 0) return;
   inFlight = true;
-  const act = (mode === 'fly') ? currentAction() : null;
-  api('/api/step', {action: act, control_idx: possessed, steps: n})
+  const manual = (mode === 'fly' && !released);
+  const act = manual ? currentAction() : null;
+  api('/api/step', {action: act, control_idx: manual ? possessed : -1, steps: n})
     .then(res => { acc -= STEP_MS * (res.steps_done || n); onState(res); })
     .catch(err => { console.error(err); apiOK = false; showBanner(); })
     .finally(() => { inFlight = false; });
@@ -635,9 +747,9 @@ const joy = {x: 0, y: 0, active: false};
 function possess(i) {
   const tgs = captureTargets();
   possessed = Math.max(0, Math.min(i, Math.max(0, tgs.length - 1)));
-  look.yaw = 0; look.pitch = 0;
+  look.yaw = 0; look.pitch = 0; released = false;
   if (mode !== 'fly') { setMode('fly'); }
-  toast(`You have drone ${possessed + 1} — W/S pitch · A/D yaw · Q/E climb · C for FPV`, 3600);
+  toast(`You have drone ${possessed + 1} — W/S pitch · A/D yaw · Q/E climb · R releases to autopilot`, 3600);
 }
 addEventListener('keydown', ev => {
   if (ev.target && ev.target.tagName === 'INPUT') return;
@@ -647,6 +759,13 @@ addEventListener('keydown', ev => {
   if (k === 'g') { toggleVolumes(); return; }
   if (k === 'p') { togglePPI(); return; }
   if (k === 't') { toggleScale(); return; }
+  if (k === 'o') { toggleEO(); return; }
+  if (k === 'y') { sceneryOn = !sceneryOn; applyScenery(); return; }
+  if (k === 'r' && mode === 'fly' && !released) {
+    released = true;
+    toast(`Drone ${possessed + 1} released to autopilot — press 1-4 to take over`, 2800);
+    return;
+  }
   if (k >= '1' && k <= '4' && apiOK) { ev.preventDefault(); possess(k.charCodeAt(0) - 49); return; }
   if ('wasdqe'.includes(k) && mode === 'fly') { keys[k] = true; ev.preventDefault(); }
 });
@@ -715,26 +834,82 @@ document.addEventListener('mousemove', ev => {
 });
 
 /* ============================================================ HUD + toggles */
+let fleetRows = [];
+function ensureFleetRows(n, multi) {
+  if (fleetRows.length === n && fleetRows._multi === multi) return;
+  const tb = $('fleetb'); tb.innerHTML = '';
+  fleetRows = []; fleetRows._multi = multi;
+  for (let i = 0; i < n; i++) {
+    const tr = document.createElement('tr');
+    const td = () => { const x = document.createElement('td'); tr.appendChild(x); return x; };
+    const c0 = td(); const dot = document.createElement('span');
+    dot.className = 'dot'; dot.style.background = DCSS[i % 4]; c0.appendChild(dot);
+    const row = {name: td(), beh: td(), rg: td(), az: td(), hd: td(), al: td(), tx: td(), sel: null};
+    const sel = document.createElement('select');
+    for (const b of BEHAVS) {
+      const o = document.createElement('option'); o.value = o.textContent = b; sel.appendChild(o);
+    }
+    sel.title = 'command this drone\u2019s autopilot behaviour';
+    sel.onchange = async () => {
+      const r = await api('/api/behaviour', {idx: i, behaviour: sel.value})
+        .catch(e => ({ok: false, error: String(e)}));
+      if (!r.ok) { toast(r.error || 'command failed'); sel.dataset.b = ''; }
+      else { sel.dataset.b = sel.value; toast(`D${i + 1} \u2192 ${sel.value} (autopilot)`, 1800); }
+    };
+    row.sel = sel; td().appendChild(sel);
+    tb.appendChild(tr);
+    fleetRows.push(row);
+  }
+}
 function updateHUD(res) {
   $('t').textContent = res.gt.t.toFixed(1) + 's';
+  const dur = res.duration_s || 20, frac = Math.min(1, res.gt.t / dur);
+  $('tfill').style.width = (frac * 100).toFixed(1) + '%';
+  $('tfill').style.background = frac > 0.8 ? '#f87171' : '#38bdf8';
   const o = res.obs, r = o.radar.n | 0, e = o.eo.n | 0, f = o.rf.n | 0;
   $('ndets').textContent = r + e + f;
   $('r').textContent = r; $('e').textContent = e; $('f').textContent = f;
   const tgs = res.gt.targets || [res.gt];
-  let html = '';
+  const multi = !!res.gt.targets;
+  ensureFleetRows(tgs.length, multi);
   tgs.forEach((tg, i) => {
-    const idx = tg.idx ?? i;
-    const hdg = tg.attitude ? tg.attitude.yaw_deg.toFixed(0) + '°' : '—';
-    html += `<tr><td><span class="dot" style="background:${DCSS[idx % 4]}"></span></td>` +
-      `<td>D${idx + 1}${mode === 'fly' && idx === possessed ? ' <b style="color:#4ade80">YOU</b>' : ''}</td>` +
-      `<td>${tg.behaviour || res.gt.scenario || '—'}</td>` +
-      `<td>${(tg.range_m / 1000).toFixed(2)} km</td>` +
-      `<td>${tg.az_deg.toFixed(0)}°</td>` +
-      `<td>${hdg}</td>` +
-      `<td>${tg.pos[2].toFixed(0)} m</td>` +
-      `<td>${tg.tx_on ? 'on' : '—'}</td></tr>`;
+    const row = fleetRows[i], idx = tg.idx ?? i;
+    const mine = mode === 'fly' && idx === possessed && !released;
+    row.name.innerHTML = `D${idx + 1}${mine ? ' <b style="color:#4ade80">YOU</b>' : ''}`;
+    row.beh.textContent = tg.behaviour || res.gt.scenario || '—';
+    row.rg.textContent = (tg.range_m / 1000).toFixed(2) + ' km';
+    row.az.textContent = tg.az_deg.toFixed(0) + '°';
+    row.hd.textContent = tg.attitude ? tg.attitude.yaw_deg.toFixed(0) + '°' : '—';
+    row.al.textContent = tg.pos[2].toFixed(0) + ' m';
+    row.tx.textContent = tg.tx_on ? 'on' : '—';
+    row.sel.disabled = !!mine || !multi;
+    if (multi && document.activeElement !== row.sel &&
+        row.sel.dataset.b !== tg.behaviour) {
+      row.sel.value = tg.behaviour; row.sel.dataset.b = tg.behaviour;
+    }
   });
-  $('fleetb').innerHTML = html;
+  if (res.score) {
+    trackerOn = true; $('sspill').style.display = '';
+    $('ss_trk').textContent = res.score.tracked_pct.toFixed(0);
+    $('ss_rmse').textContent = res.score.pos_rmse_m == null ? '—' : res.score.pos_rmse_m.toFixed(1);
+    $('ss_sw').textContent = res.score.id_switches;
+    $('ss_ft').textContent = `${res.score.n_false}/${res.score.n_false_cum}`;
+    $('scorebox').style.display = '';
+    const asg = res.score.tracks.filter(t => t.tgt != null);
+    $('scorebox').textContent =
+      `ticks ${res.score.ticks} · live tracks ${res.score.n_tracks} · confirmed ${res.score.n_confirmed}\n` +
+      `false tracks ${res.score.n_false} live / ${res.score.n_false_cum} cum (RF-bearings keep clutter alive)\n` +
+      (asg.length ? asg.map(t => `T${t.id}→D${t.tgt + 1} err ${t.dist_m == null ? '—' : t.dist_m + ' m'}`).join(' · ')
+                  : 'no track assigned yet');
+  } else if (res.tracker === false && !scoreWarned) {
+    scoreWarned = true; $('scorebox').style.display = '';
+    $('scorebox').textContent = 'live tracker unavailable (stonesoup/scipy missing on server)';
+  }
+  if (!scrubbing && recBuf.length) {
+    $('scrub').max = Math.max(1, recBuf.length - 1);
+    $('scrub').value = recBuf.length - 1;
+    $('tliv').textContent = `${res.gt.t.toFixed(1)} / ${dur.toFixed(0)} s`;
+  }
   const mine = tgs[Math.min(possessed, tgs.length - 1)];
   $('hdg').textContent = mine && mine.attitude
     ? `${mine.attitude.yaw_deg.toFixed(0)}°` : '—';
@@ -764,11 +939,14 @@ async function doExport(fmt) {
     const b = await r.blob();
     const a = document.createElement('a');
     a.href = URL.createObjectURL(b);
-    a.download = 'skygym_episode.' + fmt; a.click(); URL.revokeObjectURL(a.href);
-    toast('Exported ' + fmt.toUpperCase() + ' — one row per target per tick', 2400);
+    a.download = 'skygym_episode.' + (fmt === 'csv_dets' ? 'dets.csv' : fmt); a.click(); URL.revokeObjectURL(a.href);
+    toast(fmt === 'csv_dets' ? 'Exported detections CSV — every raw sensor row of this session'
+         : fmt === 'csv' ? 'Exported CSV — witness + your stick actions + live tracker score'
+         : 'Exported JSONL — full frames (truth + obs + action + score)', 3000);
   } catch (e) { toast('Export failed — server unreachable'); }
 }
 $('excsv').onclick = () => doExport('csv');
+$('exdet').onclick = () => doExport('csv_dets');
 $('exjsonl').onclick = () => doExport('jsonl');
 $('pause').onclick = togglePause;
 $('scale').onclick = toggleScale;
@@ -787,14 +965,86 @@ function setMode(m) {
   $('m-swm').className = m === 'swm' ? 'primary' : '';
   $('m-solo').className = m === 'solo' ? 'primary' : '';
   $('m-fly').className = m === 'fly' ? 'primary' : '';
+  $('nrow').style.display = m === 'fly' ? 'none' : 'flex';
+  if (m === 'fly' && +$('durin').value === 20) $('durin').value = 600;   // endless flight default
+  if (m !== 'fly' && +$('durin').value === 600) $('durin').value = 20;
   $('hint').innerHTML = m === 'fly'
-    ? '<b>W/S</b> pitch · <b>A/D</b> yaw · <b>Q/E</b> climb · <b>1-4</b> switch drone · <b>C</b> FPV (mouse-look) · <b>Space</b> pause'
-    : '<b>Click the canvas</b> or <b>1-4</b> to fly · <b>C</b> camera · <b>G</b> volumes · <b>P</b> PPI · <b>Space</b> pause';
+    ? '<b>W/S</b> pitch · <b>A/D</b> yaw · <b>Q/E</b> climb · <b>C</b> FPV (mouse-look) · <b>R</b> release · <b>Space</b> pause'
+    : '<b>Click the canvas</b> or <b>1-4</b> to fly · <b>C</b> camera · <b>O</b> EO · <b>Y</b> terrain · <b>P</b> PPI · <b>Space</b> pause';
   resetEpisode(BASE_SEED).catch(console.error);
 }
 $('m-swm').onclick = () => setMode('swm');
 $('m-solo').onclick = () => setMode('solo');
-$('m-fly').onclick = () => { setMode('fly'); toast('You have the stick — W/S pitch · A/D yaw · Q/E climb', 3200); };
+$('m-fly').onclick = () => { setMode('fly'); toast('Fly single: one drone, no fleet — W/S pitch · A/D yaw · Q/E climb', 3600); };
+
+/* ============================================================ EO/IR gimbal feed (Phase B: same-context render -> 2D blit, white-hot) */
+const eoCam = new THREE.PerspectiveCamera(60, 512 / 320, 2, 20000);   // FOV = EOCfg
+const eoCtx = $('eo').getContext('2d');
+const EO_HIDE = [detMesh, rays, volumes, mast];        // overlays that are not world
+for (const d of drones) EO_HIDE.push(d.trail, d.beam);
+function toggleEO() {
+  showEO = !showEO;
+  $('eobox').style.display = showEO ? 'block' : 'none';
+  $('eob').classList.toggle('on', showEO);
+}
+function renderEO() {
+  if (!showEO || !state) return;
+  const tgs = captureTargets();
+  if (!tgs.length) return;
+  const cue = tgs[Math.min(possessed, tgs.length - 1)];
+  enuXyz(cue.pos[0], cue.pos[1], cue.pos[2], _v);
+  eoCam.aspect = 512 / 320;
+  eoCam.position.set(18, 24, 0);                       // beside the mast
+  eoCam.lookAt(_v);
+  EO_HIDE.forEach(o => { o.visible = false; });
+  renderer.render(scene, eoCam);                       // EO view on the main canvas
+  // blit a centre-crop into the panel and grade it to white-hot IR
+  const cw = renderer.domElement.width, ch = renderer.domElement.height;
+  const sw = Math.min(cw, ch * 1.6), sh = sw / 1.6;
+  eoCtx.save();
+  eoCtx.filter = 'grayscale(1) contrast(1.3) brightness(1.15)';
+  eoCtx.drawImage(renderer.domElement, (cw - sw) / 2, (ch - sh) / 2, sw, sh,
+                  0, 0, 512, 320);
+  eoCtx.restore();
+  EO_HIDE.forEach(o => { o.visible = true; });
+  $('eocue').textContent = 'D' + ((cue.idx ?? possessed) + 1);
+  $('eoaz').textContent = `${cue.az_deg.toFixed(0)}° / ${(cue.range_m / 1000).toFixed(2)} km`;
+}
+
+/* ============================================================ timeline scrub (Phase C: replay the recorded session) */
+$('scrub').addEventListener('input', () => {
+  if (!recBuf.length) return;
+  scrubbing = true;
+  scrubI = Math.min(recBuf.length - 1, Math.max(0, +$('scrub').value | 0));
+  $('tliv').textContent = `scrub ${recBuf[scrubI].t.toFixed(1)}s`;
+  $('tlive').classList.remove('on');
+});
+$('tlive').onclick = () => {
+  scrubbing = false; scrubI = -1; acc = 0; paused = false;
+  $('pause').textContent = '⏸ Pause (Space)'; $('live').style.color = '#bbf7d0';
+  for (let i = 0; i < MAXD; i++) { rendV[i].copy(curPos[i]); prevPos[i].copy(curPos[i]); }
+  $('tlive').classList.add('on'); $('tliv').textContent = 'LIVE';
+};
+function renderScrubFrame() {
+  const f = recBuf[scrubI];
+  if (!f) return;
+  const ftg = f.gt.targets || [f.gt];
+  for (let i = 0; i < MAXD; i++) {
+    const d = drones[i], live = i < ftg.length;
+    d.group.visible = !!live && !(CAMS[camI] === 'FPV' && i === possessed);
+    d.beam.visible = false;
+    if (live) {
+      enuXyz(ftg[i].pos[0], ftg[i].pos[1], ftg[i].pos[2], rendV[i]);
+      d.group.position.copy(rendV[i]);
+      d.group.rotation.set(0, 0, 0);
+      const vel = ftg[i].vel, hs = vel ? Math.hypot(vel[0], vel[1]) : 0;
+      if (hs > 1.5) d.group.rotation.y = -Math.atan2(vel[0], vel[1]);
+    }
+  }
+  drawDets(f.obs);
+  updateLabels(ftg, rendV);
+  updateCamera(0.016);
+}
 
 /* ============================================================ render loop (P4: fixed-step sim, free-running render) */
 const rendV = []; for (let i = 0; i < MAXD; i++) rendV.push(new THREE.Vector3());
@@ -802,42 +1052,48 @@ let lastFrame = performance.now(), fpsN = 0, fpsT = 0;
 function frame(now) {
   requestAnimationFrame(frame);
   const dtFrame = Math.min(0.1, (now - lastFrame) / 1000); lastFrame = now;
-  if (apiOK && !paused) { acc += dtFrame * 1000; stepOnce(); }
-  const alpha = Math.min(1, Math.max(0, acc / STEP_MS));
-  const tgs = captureTargets();
-  for (let i = 0; i < MAXD; i++) {
-    const d = drones[i], live = state && i < tgs.length;
-    d.group.visible = !!live && !(CAMS[camI] === 'FPV' && i === possessed);
-    d.beam.visible = !!live;
-    if (live) {
-      rendV[i].lerpVectors(prevPos[i], curPos[i], alpha);
-      d.group.position.copy(rendV[i]);
-      // ---- attitude: smooth toward the server truth (or face velocity)
-      const a = 1 - Math.exp(-10 * dtFrame);
-      if (d.hasAtt) {
-        d.group.rotation.y += wrapPi(d.yawT - d.group.rotation.y) * a;
-        d.group.rotation.x += (d.pitchT - d.group.rotation.x) * a;
-        d.group.rotation.z += (d.rollT - d.group.rotation.z) * a;
-      } else {
-        const tg = tgs[i], vel = tg ? tg.vel : null;
-        const hs = vel ? Math.hypot(vel[0], vel[1]) : 0;
-        if (hs > 1.5) {
-          const yv = -Math.atan2(vel[0], vel[1]);
-          d.group.rotation.y += wrapPi(yv - d.group.rotation.y) * Math.min(1, 3 * dtFrame);
+  if (apiOK && !paused && !scrubbing) { acc += dtFrame * 1000 * simSpeed; stepOnce(); }
+  frameN++;
+  if (scrubbing) {
+    renderScrubFrame();
+  } else {
+    const alpha = Math.min(1, Math.max(0, acc / STEP_MS));
+    const tgs = captureTargets();
+    for (let i = 0; i < MAXD; i++) {
+      const d = drones[i], live = state && i < tgs.length;
+      d.group.visible = !!live && !(CAMS[camI] === 'FPV' && i === possessed);
+      d.beam.visible = !!live;
+      if (live) {
+        rendV[i].lerpVectors(prevPos[i], curPos[i], alpha);
+        d.group.position.copy(rendV[i]);
+        // ---- attitude: smooth toward the server truth (or face velocity)
+        const a = 1 - Math.exp(-10 * dtFrame);
+        if (d.hasAtt) {
+          d.group.rotation.y += wrapPi(d.yawT - d.group.rotation.y) * a;
+          d.group.rotation.x += (d.pitchT - d.group.rotation.x) * a;
+          d.group.rotation.z += (d.rollT - d.group.rotation.z) * a;
+        } else {
+          const tg = tgs[i], vel = tg ? tg.vel : null;
+          const hs = vel ? Math.hypot(vel[0], vel[1]) : 0;
+          if (hs > 1.5) {
+            const yv = -Math.atan2(vel[0], vel[1]);
+            d.group.rotation.y += wrapPi(yv - d.group.rotation.y) * Math.min(1, 3 * dtFrame);
+          }
+          d.group.rotation.x *= Math.exp(-4 * dtFrame);
+          d.group.rotation.z *= Math.exp(-4 * dtFrame);
         }
-        d.group.rotation.x *= Math.exp(-4 * dtFrame);
-        d.group.rotation.z *= Math.exp(-4 * dtFrame);
+        const spin = dtFrame * 55;                        // props always alive
+        for (const pr of d.props) pr.rotation.y += spin;
+        const arr = d.beam.geometry.attributes.position.array;
+        arr[0] = rendV[i].x; arr[1] = rendV[i].y; arr[2] = rendV[i].z;
+        arr[3] = rendV[i].x; arr[4] = 0; arr[5] = rendV[i].z;
+        d.beam.geometry.attributes.position.needsUpdate = true;
       }
-      const spin = dtFrame * 55;                        // props always alive
-      for (const pr of d.props) pr.rotation.y += spin;
-      const arr = d.beam.geometry.attributes.position.array;
-      arr[0] = rendV[i].x; arr[1] = rendV[i].y; arr[2] = rendV[i].z;
-      arr[3] = rendV[i].x; arr[4] = 0; arr[5] = rendV[i].z;
-      d.beam.geometry.attributes.position.needsUpdate = true;
     }
+    if (state) { drawDets(state.obs); updateLabels(tgs, rendV); updateCamera(dtFrame); }
   }
-  if (state) { drawDets(state.obs); updateLabels(tgs, rendV); updateCamera(dtFrame); }
   if (ppi.style.display !== 'none') drawPPI(now / 1000);
+  if ((frameN & 1) === 0) renderEO();                    // EO feed every other frame
   fpsN++; fpsT += dtFrame;
   if (fpsT >= 0.5) { $('fps').textContent = Math.round(fpsN / fpsT); fpsN = 0; fpsT = 0; }
   renderer.render(scene, camera);
@@ -848,6 +1104,16 @@ addEventListener('resize', () => {
 });
 renderer.setSize(innerWidth, innerHeight);
 
+/* ============================================================ controls wiring */
+document.querySelectorAll('.spd').forEach(b => b.onclick = () => {
+  document.querySelectorAll('.spd').forEach(x => x.classList.remove('on'));
+  b.classList.add('on'); simSpeed = +b.dataset.s;
+  toast(`Pace ${simSpeed}× — physics unchanged, wall-clock faster`, 1600);
+});
+$('scenb').onclick = () => { sceneryOn = !sceneryOn; applyScenery(); };
+$('eob').onclick = toggleEO;
+applyScenery();
+
 /* ============================================================ boot (P8: alive at t=0) */
 (async function boot() {
   try {
@@ -856,7 +1122,7 @@ renderer.setSize(innerWidth, innerHeight);
     apiOK = true;
     await resetEpisode(BASE_SEED);
     requestAnimationFrame(frame);
-    toast('Swarm launched — 3 drones inbound. Click the canvas or press 1-4 any time to take the stick.', 4200);
+    toast('Swarm launched — live Stone Soup score is running. 1-4 to fly, R to release, CMD column to command behaviours, drag the timeline to scrub.', 5000);
   } catch (e) { showBanner(); }
 })();
 </script>

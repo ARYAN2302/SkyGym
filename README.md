@@ -72,7 +72,7 @@ python examples/run_multidrone.py --n 3 --episodes 4 --duration 20          # sp
 python examples/run_multidrone.py --n 2 --episodes 3 --duration 60 \
        --mix approach,approach --radius 300,320                              # collision course
 
-# 6) 3D playground (Three.js · RC-stick quad flight · FPV · swarm · PPI scope)
+# 6) 3D playground (Three.js · RC-stick quad flight · FPV · swarm · PPI scope · live Stone Soup score)
 python examples/playground_3d.py                # → http://localhost:8000/examples/playground_3d.html
 ```
 
@@ -105,8 +105,8 @@ examples/
   evaluate.py        batch evaluation of the tracking baseline
   run_stonesoup.py   single-episode tracking benchmark CLI
   run_multidrone.py  multi-drone fleet benchmark CLI (CSV + identity switches)
-  playground_3d.py   3D playground v4 server (single + swarm bridge)
-  playground_3d.html Three.js scene · RC-stick flight · FPV · PPI scope · fleet HUD
+  playground_3d.py   3D playground v5 server (single + swarm bridge + live tracker)
+  playground_3d.html Three.js scene · RC-stick flight · FPV · PPI scope · EO feed · timeline
   (all tracker examples import the single standard path: skygym.stone_soup)
 docs/
   PLAYGROUND_RESEARCH.md  design study: how to build an outstanding playground
@@ -253,7 +253,7 @@ Rules enforced in code, not docs:
 | Tracker honesty | Stone Soup bridge: track initiated, bounded RMSE, sane ID readout |
 | S5 fleet | poll ≡ poll_multi · anonymous dets scale with fleet · deterministic spawn · multi grading sane · recorder per-target labels |
 
-## 3D playground v4
+## 3D playground v5
 
 `python examples/playground_3d.py` → http://localhost:8000/examples/playground_3d.html
 
@@ -279,7 +279,45 @@ stay in Python under the Gymnasium contract; the client composes RC sticks.
   own mesh hidden, crosshair overlay) · Orbit · Tower · Top; Chase and the
   HUD follow whoever you possess. The HUD marks your row **YOU**.
 - **Modes** — Swarm (autopilot fleet, auto-looping episodes with a fresh
-  seed each time), Solo auto (single drone), Fly it (manual, 600 s).
+  seed each time), Solo auto (single drone), **Fly single** (manual, just
+  you and one drone — no fleet), Fly-in-swarm (possess any of 1–4 via
+  click or keys 1–4, **R** hands the drone back to its autopilot).
+- **Live Stone Soup score (v5, Phase C)** — an `OnlineMultiTracker`
+  (`skygym/stone_soup.py`) runs the standard EKF(CV)+GNN2D baseline
+  tick-by-tick inside the playground server and grades every tick against
+  the witness with the same Hungarian assignment as the batch benchmark:
+  top-pill tracked %, running RMSE, ID switches and false-track counters
+  (live + cumulative — RF bearings keep clutter-born tracks alive, and the
+  cumulative count shows it honestly).
+- **Timeline scrub (v5, Phase C)** — every tick of the session is buffered
+  in the client; drag the bottom timeline to pause and replay any past
+  moment (drones + detections rendered from the recording), **LIVE** to
+  jump back to real time. What you scrub is what you flew.
+- **EO/IR gimbal feed (v5, Phase B)** — a picture-in-picture white-hot IR
+  view from the sensor site (60° FOV = `EOCfg`), cued to your drone,
+  graded with scanlines + vignette. At 1 km the drone is exactly the
+  faint blob the real EO channel reports — the feed *shows* the sensing
+  problem instead of hiding it.
+- **Terrain + night sky (v5, Phase B)** — procedural heightfield (flat pad,
+  hills mid-range, ridges beyond the 2.5 km ops area) and a gradient
+  night-sky dome with sun glow and stars; **Y** toggles back to the flat
+  engineering grid.
+- **Behaviour commanding (v5)** — the fleet table's **CMD** column switches
+  any autopilot drone's behaviour MID-EPISODE (hover / approach / orbit /
+  waypoint_cruise / serpentine / egress) via
+  `MultiDroneEnv.set_behaviour(k, name)` — parameters are rebuilt from the
+  drone's current state, so orbits start at the current range and
+  serpentines weave along the current heading. Trigger an evasion and
+  watch the live Stone Soup score react.
+- **Mission timer & pace (v5)** — set the episode duration (5–600 s), the
+  timer pill carries a progress bar that turns red near the end, and the
+  pace selector runs the same physics at 0.5× / 1× / 2× / 4× wall-clock.
+- **Session-faithful exports (v5)** — exports carry ONLY what this session
+  produced, never a re-simulation: **CSV** = per-target witness (gt-prefixed
+  columns) + your stick actions (`act_*`) + the live tracker score
+  (`ss_*`) + detection counts; **Dets CSV** = every raw detection row in
+  the exact Stage-0 dataset schema (`episode_id, t, sensor, az_deg, …,
+  p_unknown`); **JSONL** = full frames `{t, gt, obs, action, score}`.
 - **Two layers, never mixed (P1)** — the 3D scene renders truth (fleet,
   trails, sensor-volume wireframes at the real 3/5/8 km sensor ranges); the
   **PPI radar scope** renders measurements: north-up polar, 2 km range
@@ -320,13 +358,33 @@ criteria for the next iteration — is written up in
    the (lie, truth) pairs to beat the Stone Soup baseline where classical
    filters die (far range, bearing-only regimes, dense clutter, false-track
    suppression).
-4. **Live tracking overlay in the playground** — run `stone_soup.py` inside
-   the playground server and draw tracks vs truth ghosts in real time.
+4. ~~Live tracking overlay in the playground~~ — **shipped in v0.5.0**
+   (`OnlineMultiTracker` live scoreboard + timeline scrub).
 5. **PettingZoo-style control** — manual control of the whole fleet
    (adversarial evasion vs the tracker).
 
 ## Changelog
 
+- **v0.5.0** — playground v5 (Phases B + C) and live-scoring core:
+  `skygym/stone_soup.py` gains `OnlineMultiTracker` — the batch
+  EKF(CV)+GNN2D pipeline made tick-by-tick (same conventions, same
+  Hungarian grading) powering the playground scoreboard; `n_false` counts
+  live never-assigned tracks (batch-consistent), `n_false_cum` counts
+  every confirmation this run. `skygym/multidrone.py` gains
+  `set_behaviour(k, name)` — mid-episode behaviour switching with
+  continuous parameter hand-off (hover holds here, orbit starts at current
+  range, serpentine keeps the heading; scripted data generation
+  untouched). Playground: EO/IR white-hot gimbal feed, procedural terrain
+  + night sky, live Stone Soup scoreboard, timeline scrub of the recorded
+  session, per-drone behaviour CMD selects, R to release a possessed
+  drone to autopilot, Fly-single mode (manual, no fleet), mission
+  duration input + 0.5–4× pace control, session-faithful exports
+  (witness CSV with `gt_`/`act_`/`ss_` columns, raw-detections CSV in the
+  dataset schema, JSONL with action + score per frame). CSV truth columns
+  renamed with an explicit `gt_` prefix — they were always witness, never
+  tracker output. Live tracker timestamps are env-tick times: the
+  scoreboard is not bit-identical to the batch replay and does not claim
+  to be.
 - **v0.4.0** — playground v4: real quadcopter flight. New angle-mode flight
   controller (`QuadCfg`/`QuadAttitude`/`sticks_to_accel`, control mode only):
   RC sticks → tilt/yaw-rate/climb-rate commands → first-order attitude lag →
